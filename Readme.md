@@ -1,4 +1,4 @@
-# Ty's Tools (Swiss Army CLI)
+# Mango Tools
 
 ![status](https://img.shields.io/badge/status-active_development-2ea043?style=for-the-badge)
 ![utility](https://img.shields.io/badge/utility-command_line-2563EB?style=for-the-badge)
