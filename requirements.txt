@@ -1,0 +1,7 @@
+# Mango toolkit — Python dependencies
+# Install: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+
+Pillow>=10.4.0,<12
+pypdf>=4.3.0,<6
+pdf2docx>=0.5.8,<1
+pymupdf>=1.24.0,<2
