@@ -57,7 +57,7 @@ cd tools
 ./setup.sh
 ```
 
-The setup script creates the venv, installs Python packages, makes scripts executable, optionally installs `ffmpeg`, runs `mango doctor`, and can symlink `mango` to `~/.local/bin`.
+The setup script creates the venv, installs Python packages, makes scripts executable, optionally installs `ffmpeg`, runs `mango doctor` on first install, and can symlink `mango` to `~/.local/bin`. **Re-runs skip pip and doctor when nothing changed** — typically under half a second.
 
 Non-interactive: `./setup.sh --yes`
 
@@ -72,6 +72,9 @@ Non-interactive: `./setup.sh --yes`
 | **One-liner** | `curl -fsSL https://raw.githubusercontent.com/tmarhguy/tools/main/setup.sh \| bash` |
 | **From clone** | `./setup.sh` |
 | **Non-interactive** | `./setup.sh --yes` |
+| **Re-run (fast)** | `./setup.sh` — skips pip/doctor when deps unchanged |
+| **Force dependency check** | `./setup.sh --doctor` |
+| **Pull latest + setup** | `./setup.sh --update` |
 | **Skip ffmpeg prompt** | `./setup.sh --no-ffmpeg` |
 | **Add to PATH** | `./setup.sh --link` |
 
@@ -175,6 +178,16 @@ Example output when healthy:
   ...
   ✔ Command: ffmpeg
 ```
+
+### Verify all tools
+
+Run the smoke test suite — exercises every registered tool (skips video tests if `ffmpeg` is not installed):
+
+```bash
+./tests/smoke.sh
+```
+
+You should see `All smoke tests passed (21 tools).`
 
 ---
 
