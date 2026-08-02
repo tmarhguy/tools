@@ -7,6 +7,19 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=../lib/mango-deps.sh
 source "$ROOT/lib/mango-deps.sh"
 
+QUICK=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --quick) QUICK=1; shift ;;
+    -h|--help)
+      echo "Usage: mango doctor [--quick]"
+      echo "  --quick   Batch Python import checks (faster, for setup)"
+      exit 0
+      ;;
+    *) echo "Unknown option: $1" >&2; exit 1 ;;
+  esac
+done
+
 ok=0
 warn=0
 fail=0
@@ -37,17 +50,41 @@ else
   echo "     → $(mango_install_hint venv)"
 fi
 
-# Python packages
-for spec in "Pillow:PIL" "pypdf:pypdf" "pdf2docx:pdf2docx" "pymupdf:fitz"; do
-  pkg="${spec%%:*}"
-  mod="${spec##*:}"
-  if mango_check_python_pkg "$mod" 2>/dev/null; then
-    check_ok "Python package: $pkg"
-  else
-    check_fail "Python package missing: $pkg"
-    echo "     → $(mango_install_hint venv)"
-  fi
-done
+# Python packages — one interpreter round-trip when --quick
+if [[ "$QUICK" -eq 1 ]] && py="$(mango_python 2>/dev/null)"; then
+  while IFS='|' read -r pkg mod status; do
+    case "$status" in
+      ok)   check_ok "Python package: $pkg" ;;
+      fail)
+        check_fail "Python package missing: $pkg"
+        echo "     → $(mango_install_hint venv)"
+        ;;
+    esac
+  done < <("$py" - <<'PY'
+import importlib.util
+checks = [
+    ("Pillow", "PIL"),
+    ("pypdf", "pypdf"),
+    ("pdf2docx", "pdf2docx"),
+    ("pymupdf", "fitz"),
+]
+for pkg, mod in checks:
+    status = "ok" if importlib.util.find_spec(mod) else "fail"
+    print(f"{pkg}|{mod}|{status}")
+PY
+)
+else
+  for spec in "Pillow:PIL" "pypdf:pypdf" "pdf2docx:pdf2docx" "pymupdf:fitz"; do
+    pkg="${spec%%:*}"
+    mod="${spec##*:}"
+    if mango_check_python_pkg "$mod" 2>/dev/null; then
+      check_ok "Python package: $pkg"
+    else
+      check_fail "Python package missing: $pkg"
+      echo "     → $(mango_install_hint venv)"
+    fi
+  done
+fi
 
 echo ""
 

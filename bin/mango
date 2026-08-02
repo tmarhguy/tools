@@ -18,16 +18,20 @@ MANGO_TOOLS=(
   "video-to-gif|Video → GIF|Video & Audio|to_gif|mp4,mov,webm,mkv,avi|gif|ready"
   "extract-audio|Extract Audio|Video & Audio|extract-audio|mp4,mov,mkv,webm|mp3|ready"
   "trim-media|Trim Media|Video & Audio|trim-media|mp4,mov,mkv,webm|mp4|ready"
+  "compress-video|Compress Video|Video & Audio|compress-video|mp4,mov,webm,mkv,avi|mp4|ready"
   "compress-image|Compress Image|Image|compress-image|jpg,jpeg,png,webp,gif|same|ready"
   "convert-image|Convert Image|Image|convert-image|jpg,jpeg,png,webp,gif,bmp|same|ready"
   "strip-exif|Strip EXIF|Image|strip-exif|jpg,jpeg,png,webp|same|ready"
   "pdf-to-word|PDF → Word|PDF|pdftoword|pdf|docx|ready"
   "merge-pdf|Merge PDFs|PDF|merge-pdf|pdf|pdf|ready"
-  "split-pdf|Split PDF|PDF|split-pdf|pdf|pdf|ready"
+  "split-pdf|Split PDF|PDF|split-pdf|pdf|dir|ready"
   "rotate-pdf|Rotate PDF|PDF|rotate-pdf|pdf|pdf|ready"
   "jpg-to-pdf|Images → PDF|PDF|jpg-to-pdf|jpg,jpeg,png,webp|pdf|ready"
-  "pdf-to-jpg|PDF → JPG|PDF|pdf-to-jpg|pdf|jpg|ready"
+  "pdf-to-jpg|PDF → JPG|PDF|pdf-to-jpg|pdf|dir|ready"
   "compress-pdf|Compress PDF|PDF|compress-pdf|pdf|pdf|ready"
+  "protect-pdf|Protect PDF|PDF|protect-pdf|pdf|pdf|ready"
+  "unlock-pdf|Unlock PDF|PDF|unlock-pdf|pdf|pdf|ready"
+  "watermark-pdf|Watermark PDF|PDF|watermark-pdf|pdf|pdf|ready"
   "format-json|Format JSON|Developer|format-json|json|json|ready"
   "hash-gen|Hash File|Developer|hash-gen|any|any|ready"
   "base64-tool|Base64 Encode/Decode|Developer|base64-tool|any|any|ready"
@@ -118,8 +122,67 @@ _mango_read_menu_choice() {
 
 # ── Conversion runner ───────────────────────────────────────────────────────────
 
+_mango_run_merge_pdf() {
+  local label="$1"
+  local category="$2"
+
+  ui_tool_header "$label" "$category"
+  ui_breadcrumb "Home" "$category" "$label"
+
+  ui_box_open "Merge PDFs"
+  ui_box_line "  ${MANGO_DIM}Add PDFs one at a time. Leave path empty when done.${MANGO_RESET}"
+  ui_box_close
+  echo ""
+
+  local -a pdfs=()
+  while true; do
+    local path
+    ui_prompt "PDF path #$((${#pdfs[@]} + 1)) (empty to finish)" path
+    [[ -z "$path" ]] && break
+    path=$(_mango_expand_path "$path")
+    if [[ ! -f "$path" ]]; then
+      ui_message error "File not found: $path"
+      echo ""
+      continue
+    fi
+    pdfs+=("$path")
+    ui_message success "Added $(basename "$path") (${#pdfs[@]} total)"
+    echo ""
+  done
+
+  if [[ ${#pdfs[@]} -lt 2 ]]; then
+    ui_message warning "Need at least 2 PDFs to merge."
+    ui_pause
+    return 0
+  fi
+
+  local suggested output
+  suggested="$(dirname "${pdfs[0]}")/merged.pdf"
+  ui_prompt_default "Output path" "$suggested" output
+  output=$(_mango_expand_path "$output")
+
+  if ! ui_confirm "Merge ${#pdfs[@]} files?"; then
+    ui_message info "Cancelled."
+    ui_pause
+    return 0
+  fi
+
+  local -a cmd=("$BIN/merge-pdf")
+  cmd+=("${pdfs[@]}" "-o" "$output")
+  ui_run_tool "$label" "${cmd[@]}" || true
+  ui_pause
+}
+
 _mango_run_conversion() {
   local tool_id="$1"
+
+  case "$tool_id" in
+    merge-pdf)
+      _mango_run_merge_pdf "Merge PDFs" "PDF"
+      return 0
+      ;;
+  esac
+
   local label category script in_exts out_ext status
   label=$(_mango_tool_field "$tool_id" label)
   category=$(_mango_tool_field "$tool_id" category)
@@ -140,11 +203,21 @@ _mango_run_conversion() {
   local -a ext_array=()
   IFS=',' read -ra ext_array <<< "$in_exts"
 
-  local input output
+  local input output password="" password2="" watermark_text=""
   ui_prompt_file "Path to input file (drag & drop works)" input "${ext_array[@]}"
 
   if [[ "$out_ext" == "same" ]]; then
     output="$input"
+  elif [[ "$out_ext" == "dir" ]]; then
+    local suggested
+    suggested=$(ui_suggest_output_dir "$input" "_out")
+    ui_box_open "Output"
+    ui_box_line "  ${MANGO_DIM}This tool writes multiple files into a folder.${MANGO_RESET}"
+    ui_box_close
+    echo ""
+    ui_prompt_default "Output directory" "$suggested" output
+    output=$(_mango_expand_path "$output")
+    mkdir -p "$output"
   else
     local suggested
     suggested=$(ui_suggest_output "$input" "$out_ext")
@@ -152,6 +225,24 @@ _mango_run_conversion() {
     ui_prompt_default "Output path" "$suggested" output
     output=$(_mango_expand_path "$output")
   fi
+
+  case "$tool_id" in
+    protect-pdf)
+      ui_prompt_secret "Choose a password" password
+      ui_prompt_secret "Confirm password" password2
+      if [[ "$password" != "$password2" ]]; then
+        ui_message error "Passwords do not match."
+        ui_pause
+        return 0
+      fi
+      ;;
+    unlock-pdf)
+      ui_prompt_secret "PDF password" password
+      ;;
+    watermark-pdf)
+      ui_prompt_default "Watermark text" "CONFIDENTIAL" watermark_text
+      ;;
+  esac
 
   ui_conversion_preview "$input" "$output" "Ready to convert"
 
@@ -164,7 +255,7 @@ _mango_run_conversion() {
   local -a cmd=("$BIN/$script")
 
   case "$tool_id" in
-    video-to-gif)
+    video-to-gif|compress-video)
       cmd+=("$input" "-o" "$output")
       ;;
     compress-image|strip-exif)
@@ -173,23 +264,14 @@ _mango_run_conversion() {
         cmd+=("-o" "$output")
       fi
       ;;
-    convert-image)
+    convert-image|pdf-to-word|rotate-pdf|compress-pdf|pdf-to-jpg|split-pdf|jpg-to-pdf)
       cmd+=("$input" "-o" "$output")
       ;;
-    pdf-to-word)
-      cmd+=("$input" "-o" "$output")
+    protect-pdf|unlock-pdf)
+      cmd+=("$input" "-o" "$output" "-p" "$password")
       ;;
-    rotate-pdf|compress-pdf)
-      cmd+=("$input" "-o" "$output")
-      ;;
-    pdf-to-jpg|split-pdf)
-      cmd+=("$input" "-o" "$output")
-      ;;
-    jpg-to-pdf)
-      cmd+=("$input" "-o" "$output")
-      ;;
-    merge-pdf)
-      cmd+=("$input" "-o" "$output")
+    watermark-pdf)
+      cmd+=("$input" "-o" "$output" "-t" "$watermark_text")
       ;;
     extract-audio|trim-media)
       cmd+=("$input" "-o" "$output")
@@ -201,7 +283,7 @@ _mango_run_conversion() {
       cmd+=("$input")
       ;;
     *)
-      cmd+=("$input" "$output")
+      cmd+=("$input" "-o" "$output")
       ;;
   esac
 
@@ -349,7 +431,7 @@ _mango_main_menu() {
 
   ui_menu \
     "Quick Convert"  "pick a file → see all options" \
-    "Video & Audio"  "GIF, audio extraction, trim" \
+    "Video & Audio"  "GIF, compress, audio, trim" \
     "PDF Toolkit"    "convert, merge, compress" \
     "Image Toolkit"  "compress, convert formats" \
     "Developer"      "JSON, base64, hashes" \
@@ -365,6 +447,8 @@ _mango_main_menu() {
     4) _mango_category_menu "Image" ;;
     5) _mango_category_menu "Developer" ;;
     6)
+      ui_leave_alt_screen
+      trap - EXIT INT TERM
       ui_clear
       echo ""
       echo -e "  ${MANGO_FG_MANGO}${MANGO_BOLD}Thanks for using Mango!${MANGO_RESET} ${MANGO_DIM}🥭${MANGO_RESET}"
@@ -378,7 +462,7 @@ _mango_main_menu() {
 
 main() {
   if [[ "${1:-}" == "doctor" ]]; then
-    exec "$ROOT/bin/mango-doctor"
+    exec "$ROOT/bin/mango-doctor" "${@:2}"
   fi
 
   if [[ ! -t 0 || ! -t 1 ]]; then
@@ -386,6 +470,9 @@ main() {
     echo "  mango"
     exit 1
   fi
+
+  ui_enter_alt_screen
+  trap 'ui_leave_alt_screen' EXIT INT TERM
 
   while true; do
     _mango_main_menu

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Wrapper — Base64 encode/decode
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TOOL="$ROOT/tools/dev/base64-tool.sh"
+
+if [[ ! -x "$TOOL" ]]; then
+  echo "Error: base64-tool is not installed yet." >&2
+  exit 1
+fi
+
+exec "$TOOL" "$@"

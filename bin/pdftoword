@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Wrapper — PDF to Word
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TOOL="$ROOT/tools/pdf/pdftoword.sh"
+
+if [[ ! -x "$TOOL" ]]; then
+  echo "Error: PDF to Word tool is not installed yet." >&2
+  echo "Expected script: $TOOL" >&2
+  exit 1
+fi
+
+exec "$TOOL" "$@"

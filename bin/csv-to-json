@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Wrapper — CSV to JSON
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TOOL="$ROOT/tools/dev/csv-to-json.sh"
+
+if [[ ! -x "$TOOL" ]]; then
+  echo "Error: csv-to-json tool is not installed yet." >&2
+  exit 1
+fi
+
+exec "$TOOL" "$@"

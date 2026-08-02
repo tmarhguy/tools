@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Wrapper — Format JSON
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TOOL="$ROOT/tools/dev/format-json.sh"
+
+if [[ ! -x "$TOOL" ]]; then
+  echo "Error: format-json tool is not installed yet." >&2
+  exit 1
+fi
+
+exec "$TOOL" "$@"
