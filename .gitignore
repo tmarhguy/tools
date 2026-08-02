@@ -1,1 +1,6 @@
 /log/.obsidian
+.venv/
+__pycache__/
+*.pyc
+tests/fixtures/*.pretty.json
+tests/fixtures/out.json
