@@ -9,6 +9,9 @@
 #
 # Options:
 #   -y, --yes          Non-interactive (yes to prompts)
+#   --fast             Skip work when already set up (default on re-run)
+#   --doctor           Run mango doctor at the end (skipped when --fast and healthy)
+#   --update           git pull before setup (remote installs only)
 #   --no-ffmpeg        Skip ffmpeg install attempt
 #   --no-link          Skip ~/.local/bin symlink
 #   --link             Always symlink mango to ~/.local/bin
@@ -21,6 +24,9 @@ MANGO_BIN_DIR="${MANGO_BIN_DIR:-$HOME/.local/bin}"
 MANGO_BRANCH="${MANGO_BRANCH:-main}"
 
 ASSUME_YES=0
+FAST_MODE=0
+RUN_DOCTOR=0
+DO_GIT_UPDATE=0
 SKIP_FFMPEG=0
 SKIP_LINK=0
 FORCE_LINK=0
@@ -28,11 +34,14 @@ FORCE_LINK=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -y|--yes) ASSUME_YES=1; shift ;;
+    --fast) FAST_MODE=1; shift ;;
+    --doctor) RUN_DOCTOR=1; shift ;;
+    --update) DO_GIT_UPDATE=1; shift ;;
     --no-ffmpeg) SKIP_FFMPEG=1; shift ;;
     --no-link) SKIP_LINK=1; shift ;;
     --link) FORCE_LINK=1; shift ;;
     -h|--help)
-      sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -82,8 +91,10 @@ _mango_resolve_root() {
   # Remote / curl install — use fixed install dir
   local dir="$MANGO_INSTALL_DIR"
   if [[ -d "$dir/.git" && -f "$dir/requirements.txt" ]]; then
-    _mango_step "Updating existing install at $dir"
-    git -C "$dir" pull --ff-only origin "$MANGO_BRANCH" 2>/dev/null || git -C "$dir" pull --ff-only 2>/dev/null || true
+    if [[ "$DO_GIT_UPDATE" -eq 1 ]]; then
+      _mango_step "Updating existing install at $dir"
+      git -C "$dir" pull --ff-only origin "$MANGO_BRANCH" 2>/dev/null || git -C "$dir" pull --ff-only 2>/dev/null || true
+    fi
     printf '%s' "$dir"
     return 0
   fi
@@ -112,22 +123,58 @@ _mango_check_python() {
   _mango_info "Python $ver"
 }
 
+_mango_req_hash() {
+  local root="$1"
+  if command -v shasum &>/dev/null; then
+    shasum -a 256 "$root/requirements.txt" | awk '{print $1}'
+  elif command -v sha256sum &>/dev/null; then
+    sha256sum "$root/requirements.txt" | awk '{print $1}'
+  else
+    cksum "$root/requirements.txt" | awk '{print $1}'
+  fi
+}
+
+_mango_deps_current() {
+  local root="$1" hash stored
+  [[ -x "$root/.venv/bin/python" ]] || return 1
+  [[ -f "$root/.venv/.mango-deps-hash" ]] || return 1
+  hash="$(_mango_req_hash "$root")"
+  stored="$(cat "$root/.venv/.mango-deps-hash")"
+  [[ "$hash" == "$stored" ]]
+}
+
+_mango_pip_install() {
+  local root="$1"
+  export PIP_DISABLE_PIP_VERSION_CHECK=1
+  export PYTHONDONTWRITEBYTECODE=1
+  if command -v uv &>/dev/null; then
+    uv pip install -r "$root/requirements.txt" -q
+  else
+    pip install -r "$root/requirements.txt" -q --disable-pip-version-check
+  fi
+}
+
 _mango_setup_venv() {
   local root="$1"
   cd "$root"
 
+  local created_venv=0
   if [[ ! -d .venv ]]; then
     _mango_step "Creating virtual environment"
     python3 -m venv .venv
-  else
-    _mango_info "Virtual env already exists"
+    created_venv=1
+  fi
+
+  if [[ "$created_venv" -eq 0 ]] && _mango_deps_current "$root"; then
+    _mango_info "Python packages up to date (skipped pip)"
+    return 0
   fi
 
   _mango_step "Installing Python packages"
   # shellcheck disable=SC1091
   source .venv/bin/activate
-  python -m pip install --upgrade pip -q
-  pip install -r requirements.txt -q
+  _mango_pip_install "$root"
+  _mango_req_hash "$root" > .venv/.mango-deps-hash
   _mango_info "Done (Pillow, pypdf, pdf2docx, pymupdf)"
 }
 
@@ -208,12 +255,40 @@ main() {
   root="$(_mango_resolve_root)"
   _mango_info "Install directory: $root"
 
+  local already_ready=0
+  if _mango_deps_current "$root"; then
+    already_ready=1
+    [[ "$FAST_MODE" -eq 0 ]] && FAST_MODE=1
+  fi
+
+  if [[ "$FAST_MODE" -eq 1 && "$already_ready" -eq 1 ]]; then
+    _mango_chmod_scripts "$root"
+    if [[ "$FORCE_LINK" -eq 1 ]]; then
+      _mango_link_bin "$root"
+    elif [[ -x "$MANGO_BIN_DIR/mango" ]]; then
+      _mango_info "PATH link: $MANGO_BIN_DIR/mango"
+    fi
+    echo ""
+    echo "Already up to date."
+    echo ""
+    echo "  cd $root && ./mango"
+    echo ""
+    return 0
+  fi
+
   _mango_setup_venv "$root"
   _mango_chmod_scripts "$root"
-  _mango_try_ffmpeg
 
-  _mango_step "Running mango doctor"
-  "$root/bin/mango-doctor" || true
+  if [[ "$FAST_MODE" -eq 0 ]]; then
+    _mango_try_ffmpeg
+  else
+    command -v ffmpeg &>/dev/null && _mango_info "ffmpeg already installed" || _mango_info "ffmpeg not found (use --no-ffmpeg or full setup for install prompt)"
+  fi
+
+  if [[ "$RUN_DOCTOR" -eq 1 || "$already_ready" -eq 0 ]]; then
+    _mango_step "Running mango doctor"
+    "$root/bin/mango-doctor" --quick || true
+  fi
 
   _mango_link_bin "$root"
 
