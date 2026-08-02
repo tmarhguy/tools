@@ -20,6 +20,8 @@ if [[ "$MANGO_UI_WIDTH" -lt 60 ]]; then
 elif [[ "$MANGO_UI_WIDTH" -gt 100 ]]; then
   MANGO_UI_WIDTH=100
 fi
+MANGO_UI_INNER=$((MANGO_UI_WIDTH - 4))
+MANGO_ALT_SCREEN=0
 
 _mango_repeat() {
   local char="$1" count="$2" i
@@ -37,9 +39,23 @@ _mango_strip_ansi() {
   sed 's/\x1b\[[0-9;]*m//g'
 }
 
+ui_enter_alt_screen() {
+  [[ -t 1 ]] || return 0
+  [[ "${MANGO_NO_ALT_SCREEN:-0}" -eq 1 ]] && return 0
+  printf '\033[?1049h\033[H'
+  MANGO_ALT_SCREEN=1
+}
+
+ui_leave_alt_screen() {
+  [[ "${MANGO_ALT_SCREEN:-0}" -eq 1 ]] || return 0
+  printf '\033[?1049l'
+  MANGO_ALT_SCREEN=0
+}
+
 ui_clear() {
   if [[ -t 1 ]]; then
-    clear
+    # Avoid spawning `clear` — home + erase is much faster
+    printf '\033[H\033[2J'
   fi
 }
 
@@ -81,7 +97,7 @@ ui_home_panel() {
 
 ui_title_bar() {
   local title="$1"
-  local inner=$((MANGO_UI_WIDTH - 4))
+  local inner=$MANGO_UI_INNER
   local line
   line=$(_mango_pad_center " $title " "$inner")
 
@@ -94,7 +110,7 @@ ui_title_bar() {
 
 ui_box_open() {
   local title="${1:-}"
-  local inner=$((MANGO_UI_WIDTH - 4))
+  local inner=$MANGO_UI_INNER
 
   echo -e "${MANGO_FG_MANGO}┌$(_mango_repeat '─' "$inner")┐${MANGO_RESET}"
   if [[ -n "$title" ]]; then
@@ -107,26 +123,26 @@ ui_box_open() {
 
 ui_box_line() {
   local text="$1"
-  local inner=$((MANGO_UI_WIDTH - 4))
+  local inner=$MANGO_UI_INNER
   local plain
-  plain=$(echo -e "$text" | _mango_strip_ansi)
+  plain=$(printf '%b' "$text" | _mango_strip_ansi)
   local pad=$((inner - 2 - ${#plain}))
   if [[ "$pad" -lt 0 ]]; then pad=0; fi
   echo -e "${MANGO_FG_MANGO}│${MANGO_RESET} ${text}$(_mango_repeat ' ' "$pad") ${MANGO_FG_MANGO}│${MANGO_RESET}"
 }
 
 ui_box_close() {
-  local inner=$((MANGO_UI_WIDTH - 4))
+  local inner=$MANGO_UI_INNER
   echo -e "${MANGO_FG_MANGO}└$(_mango_repeat '─' "$inner")┘${MANGO_RESET}"
 }
 
 ui_box_rule() {
-  local inner=$((MANGO_UI_WIDTH - 4))
+  local inner=$MANGO_UI_INNER
   echo -e "${MANGO_FG_MANGO}├$(_mango_repeat '─' "$inner")┤${MANGO_RESET}"
 }
 
 ui_divider() {
-  local inner=$((MANGO_UI_WIDTH - 4))
+  local inner=$MANGO_UI_INNER
   echo -e "${MANGO_DIM}$(_mango_repeat '─' "$inner")${MANGO_RESET}"
 }
 
@@ -185,6 +201,19 @@ ui_prompt() {
   ui_box_close
   echo -ne "  ${MANGO_CYAN}❯${MANGO_RESET} "
   read -er "$varname"
+}
+
+ui_prompt_secret() {
+  local message="$1"
+  local varname="$2"
+
+  ui_box_open
+  ui_box_line "${MANGO_CYAN}${MANGO_BOLD}❯${MANGO_RESET} ${message}"
+  ui_box_line "  ${MANGO_DIM}(input hidden)${MANGO_RESET}"
+  ui_box_close
+  echo -ne "  ${MANGO_CYAN}❯${MANGO_RESET} "
+  read -rs "$varname"
+  echo ""
 }
 
 ui_message() {
@@ -482,4 +511,14 @@ ui_suggest_output() {
   base=$(basename "$input")
   base="${base%.*}"
   echo "${dir}/${base}.${new_ext}"
+}
+
+ui_suggest_output_dir() {
+  local input="$1"
+  local suffix="${2:-_out}"
+  local dir base
+  dir=$(dirname "$input")
+  base=$(basename "$input")
+  base="${base%.*}"
+  echo "${dir}/${base}${suffix}"
 }
