@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Mango doctor — dependency health check
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/mango-deps.sh
+source "$ROOT/lib/mango-deps.sh"
+
+ok=0
+warn=0
+fail=0
+
+check_ok()   { echo "  ✔ $1"; ((ok++)) || true; }
+check_warn() { echo "  ⚠ $1"; ((warn++)) || true; }
+check_fail() { echo "  ✖ $1"; ((fail++)) || true; }
+
+echo ""
+echo "Mango Doctor"
+echo "────────────"
+echo ""
+
+# Python
+if py="$(mango_python 2>/dev/null)"; then
+  ver="$("$py" --version 2>&1)"
+  check_ok "Python: $ver ($py)"
+else
+  check_fail "Python 3 not found"
+  echo "     → $(mango_install_hint python)"
+fi
+
+# venv
+if [[ -x "$ROOT/.venv/bin/python" ]]; then
+  check_ok "Virtual env: $ROOT/.venv"
+else
+  check_warn "No project venv at .venv (using system python3)"
+  echo "     → $(mango_install_hint venv)"
+fi
+
+# Python packages
+for spec in "Pillow:PIL" "pypdf:pypdf" "pdf2docx:pdf2docx" "pymupdf:fitz"; do
+  pkg="${spec%%:*}"
+  mod="${spec##*:}"
+  if mango_check_python_pkg "$mod" 2>/dev/null; then
+    check_ok "Python package: $pkg"
+  else
+    check_fail "Python package missing: $pkg"
+    echo "     → $(mango_install_hint venv)"
+  fi
+done
+
+echo ""
+
+# External commands
+for spec in "ffmpeg:ffmpeg" "gs:ghostscript"; do
+  cmd="${spec%%:*}"
+  hint="${spec##*:}"
+  if command -v "$cmd" &>/dev/null; then
+    check_ok "Command: $cmd ($(command -v "$cmd"))"
+  else
+    check_warn "Command not found: $cmd (needed for some video/PDF tools)"
+    echo "     → $(mango_install_hint "$hint")"
+  fi
+done
+
+echo ""
+echo "Summary: $ok ok, $warn warnings, $fail failures"
+echo ""
+
+if [[ "$fail" -gt 0 ]]; then
+  exit 1
+fi
+exit 0

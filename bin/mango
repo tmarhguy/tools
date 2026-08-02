@@ -1,0 +1,395 @@
+#!/usr/bin/env bash
+# Mango — interactive terminal UI for Ty's Toolkit Hub
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/mango-ui.sh
+source "$ROOT/lib/mango-ui.sh"
+
+BIN="$ROOT/bin"
+
+# ── Tool registry ─────────────────────────────────────────────────────────────
+# Each tool: id|label|category|script|input_exts|output_ext|status
+#   input_exts: comma-separated (e.g. mp4,mov)
+#   status: ready | soon
+
+MANGO_TOOLS=(
+  "video-to-gif|Video → GIF|Video & Audio|to_gif|mp4,mov,webm,mkv,avi|gif|ready"
+  "extract-audio|Extract Audio|Video & Audio|extract-audio|mp4,mov,mkv,webm|mp3|ready"
+  "trim-media|Trim Media|Video & Audio|trim-media|mp4,mov,mkv,webm|mp4|ready"
+  "compress-image|Compress Image|Image|compress-image|jpg,jpeg,png,webp,gif|same|ready"
+  "convert-image|Convert Image|Image|convert-image|jpg,jpeg,png,webp,gif,bmp|same|ready"
+  "strip-exif|Strip EXIF|Image|strip-exif|jpg,jpeg,png,webp|same|ready"
+  "pdf-to-word|PDF → Word|PDF|pdftoword|pdf|docx|ready"
+  "merge-pdf|Merge PDFs|PDF|merge-pdf|pdf|pdf|ready"
+  "split-pdf|Split PDF|PDF|split-pdf|pdf|pdf|ready"
+  "rotate-pdf|Rotate PDF|PDF|rotate-pdf|pdf|pdf|ready"
+  "jpg-to-pdf|Images → PDF|PDF|jpg-to-pdf|jpg,jpeg,png,webp|pdf|ready"
+  "pdf-to-jpg|PDF → JPG|PDF|pdf-to-jpg|pdf|jpg|ready"
+  "compress-pdf|Compress PDF|PDF|compress-pdf|pdf|pdf|ready"
+  "format-json|Format JSON|Developer|format-json|json|json|ready"
+  "hash-gen|Hash File|Developer|hash-gen|any|any|ready"
+  "base64-tool|Base64 Encode/Decode|Developer|base64-tool|any|any|ready"
+  "csv-to-json|CSV → JSON|Developer|csv-to-json|csv|json|ready"
+)
+
+_mango_tool_field() {
+  local id="$1" field="$2" row part
+  for row in "${MANGO_TOOLS[@]}"; do
+    IFS='|' read -r tid _ _ _ _ _ _ <<< "$row"
+    if [[ "$tid" == "$id" ]]; then
+      IFS='|' read -r _ label category script in_exts out_ext status <<< "$row"
+      case "$field" in
+        label)    echo "$label" ;;
+        category) echo "$category" ;;
+        script)   echo "$script" ;;
+        in_exts)  echo "$in_exts" ;;
+        out_ext)  echo "$out_ext" ;;
+        status)   echo "$status" ;;
+      esac
+      return 0
+    fi
+  done
+  return 1
+}
+
+_mango_tool_by_index() {
+  local idx="$1"
+  local i=0 row
+  for row in "${MANGO_TOOLS[@]}"; do
+    if [[ "$i" -eq "$idx" ]]; then
+      echo "$row"
+      return 0
+    fi
+    ((i++)) || true
+  done
+  return 1
+}
+
+_mango_ext_matches() {
+  local file_ext="$1"
+  local allowed="$2"
+  file_ext=$(printf '%s' "$file_ext" | tr '[:upper:]' '[:lower:]')
+  local ext
+  IFS=',' read -ra parts <<< "$allowed"
+  for ext in "${parts[@]}"; do
+    ext=$(printf '%s' "$ext" | tr '[:upper:]' '[:lower:]')
+    [[ "$ext" == "any" || "$ext" == "various" || "$ext" == "same" ]] && return 0
+    [[ "$file_ext" == "$ext" ]] && return 0
+  done
+  return 1
+}
+
+_mango_script_ready() {
+  local script="$1"
+  [[ -z "$script" ]] && return 1
+  [[ -x "$BIN/$script" ]] || return 1
+  return 0
+}
+
+_mango_read_menu_choice() {
+  local max="$1"
+  local varname="$2"
+  local allow_back="${3:-1}"
+  local choice hint
+
+  if [[ "$allow_back" == "1" ]]; then
+    hint="Enter choice (1–${max}, or q to go back)"
+  else
+    hint="Enter choice (1–${max})"
+  fi
+
+  while true; do
+    ui_prompt "$hint" choice
+    choice=$(printf '%s' "$choice" | tr '[:upper:]' '[:lower:]')
+    if [[ "$allow_back" == "1" ]] && [[ "$choice" == "q" || "$choice" == "b" || "$choice" == "back" ]]; then
+      printf -v "$varname" '%s' "back"
+      return 0
+    fi
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 && "$choice" -le "$max" ]]; then
+      printf -v "$varname" '%s' "$choice"
+      return 0
+    fi
+    ui_message warning "Please enter a number between 1 and ${max}, or q to go back."
+    echo ""
+  done
+}
+
+# ── Conversion runner ───────────────────────────────────────────────────────────
+
+_mango_run_conversion() {
+  local tool_id="$1"
+  local label category script in_exts out_ext status
+  label=$(_mango_tool_field "$tool_id" label)
+  category=$(_mango_tool_field "$tool_id" category)
+  script=$(_mango_tool_field "$tool_id" script)
+  in_exts=$(_mango_tool_field "$tool_id" in_exts)
+  out_ext=$(_mango_tool_field "$tool_id" out_ext)
+  status=$(_mango_tool_field "$tool_id" status)
+
+  ui_tool_header "$label" "$category"
+  ui_breadcrumb "Home" "$category" "$label"
+
+  if [[ "$status" != "ready" ]] || ! _mango_script_ready "$script"; then
+    ui_message info "This tool is coming soon — check back after the next update."
+    ui_pause
+    return 0
+  fi
+
+  local -a ext_array=()
+  IFS=',' read -ra ext_array <<< "$in_exts"
+
+  local input output
+  ui_prompt_file "Path to input file (drag & drop works)" input "${ext_array[@]}"
+
+  if [[ "$out_ext" == "same" ]]; then
+    output="$input"
+  else
+    local suggested
+    suggested=$(ui_suggest_output "$input" "$out_ext")
+    ui_conversion_preview "$input" "$suggested" "Preview"
+    ui_prompt_default "Output path" "$suggested" output
+    output=$(_mango_expand_path "$output")
+  fi
+
+  ui_conversion_preview "$input" "$output" "Ready to convert"
+
+  if ! ui_confirm "Start conversion?"; then
+    ui_message info "Cancelled."
+    ui_pause
+    return 0
+  fi
+
+  local -a cmd=("$BIN/$script")
+
+  case "$tool_id" in
+    video-to-gif)
+      cmd+=("$input" "-o" "$output")
+      ;;
+    compress-image|strip-exif)
+      cmd+=("$input")
+      if [[ "$output" != "$input" ]]; then
+        cmd+=("-o" "$output")
+      fi
+      ;;
+    convert-image)
+      cmd+=("$input" "-o" "$output")
+      ;;
+    pdf-to-word)
+      cmd+=("$input" "-o" "$output")
+      ;;
+    rotate-pdf|compress-pdf)
+      cmd+=("$input" "-o" "$output")
+      ;;
+    pdf-to-jpg|split-pdf)
+      cmd+=("$input" "-o" "$output")
+      ;;
+    jpg-to-pdf)
+      cmd+=("$input" "-o" "$output")
+      ;;
+    merge-pdf)
+      cmd+=("$input" "-o" "$output")
+      ;;
+    extract-audio|trim-media)
+      cmd+=("$input" "-o" "$output")
+      ;;
+    format-json|csv-to-json|base64-tool)
+      cmd+=("$input" "-o" "$output")
+      ;;
+    hash-gen)
+      cmd+=("$input")
+      ;;
+    *)
+      cmd+=("$input" "$output")
+      ;;
+  esac
+
+  ui_run_tool "$label" "${cmd[@]}" || true
+  ui_pause
+}
+
+# ── Quick convert: pick file first, then see options ────────────────────────────
+
+_mango_quick_convert() {
+  ui_tool_header "Quick Convert" ""
+  ui_breadcrumb "Home" "Quick Convert"
+
+  ui_box_open "How it works"
+  ui_box_line "  ${MANGO_DIM}1.${MANGO_RESET} Pick any file"
+  ui_box_line "  ${MANGO_DIM}2.${MANGO_RESET} Mango shows every conversion available for that type"
+  ui_box_line "  ${MANGO_DIM}3.${MANGO_RESET} Choose one and go"
+  ui_box_close
+  echo ""
+
+  local input
+  ui_prompt_file "Path to your file" input
+
+  local file_ext
+  file_ext="${input##*.}"
+  file_ext=$(printf '%s' "$file_ext" | tr '[:upper:]' '[:lower:]')
+  local in_base size
+  in_base=$(basename "$input")
+  size=$(_mango_file_size "$input")
+
+  ui_box_open "Selected"
+  ui_box_line "  ${MANGO_WHITE}${MANGO_BOLD}${in_base}${MANGO_RESET}  ${MANGO_DIM}${size}${MANGO_RESET}"
+  ui_box_close
+  echo ""
+
+  local -a matches=()
+  local row tid label category script in_exts out_ext status
+  for row in "${MANGO_TOOLS[@]}"; do
+    IFS='|' read -r tid label category script in_exts out_ext status <<< "$row"
+    if _mango_ext_matches "$file_ext" "$in_exts"; then
+      matches+=("$row")
+    fi
+  done
+
+  if [[ ${#matches[@]} -eq 0 ]]; then
+    ui_message warning "No conversions registered for .${file_ext} files yet."
+    ui_pause
+    return 0
+  fi
+
+  local -a menu_items=()
+  local i=0
+  for row in "${matches[@]}"; do
+    IFS='|' read -r tid label category script in_exts out_ext status <<< "$row"
+    if [[ "$status" == "ready" ]] && _mango_script_ready "$script"; then
+      menu_items+=("${label}|ready")
+    else
+      menu_items+=("${label}|soon")
+    fi
+    ((i++)) || true
+  done
+  menu_items+=("Back|")
+
+  ui_menu_numbered "Available conversions for .${file_ext}" "${menu_items[@]}"
+
+  local choice
+  _mango_read_menu_choice "${#menu_items[@]}" choice
+  [[ "$choice" == "back" ]] && return 0
+  if [[ "$choice" -eq ${#menu_items[@]} ]]; then
+    return 0
+  fi
+
+  local selected="${matches[$((choice - 1))]}"
+  IFS='|' read -r tid _ _ _ _ _ status <<< "$selected"
+
+  if [[ "$status" != "ready" ]]; then
+    ui_message info "That conversion is coming soon."
+    ui_pause
+    return 0
+  fi
+
+  _mango_run_conversion "$tid"
+}
+
+# ── Category browser ────────────────────────────────────────────────────────────
+
+_mango_category_menu() {
+  local cat="$1"
+  ui_tool_header "$cat" ""
+  ui_breadcrumb "Home" "$cat"
+
+  local -a in_cat=()
+  local row tid label category script in_exts out_ext status
+  for row in "${MANGO_TOOLS[@]}"; do
+    IFS='|' read -r tid label category script in_exts out_ext status <<< "$row"
+    if [[ "$category" == "$cat" ]]; then
+      in_cat+=("$row")
+    fi
+  done
+
+  if [[ ${#in_cat[@]} -eq 0 ]]; then
+    ui_message info "No tools in this category yet."
+    ui_pause
+    return 0
+  fi
+
+  local -a menu_items=()
+  for row in "${in_cat[@]}"; do
+    IFS='|' read -r tid label category script in_exts out_ext status <<< "$row"
+    if [[ "$status" == "ready" ]] && _mango_script_ready "$script"; then
+      menu_items+=("${label}|ready")
+    else
+      menu_items+=("${label}|soon")
+    fi
+  done
+  menu_items+=("Back|")
+
+  ui_menu_numbered "$cat" "${menu_items[@]}"
+  echo -e "  ${MANGO_DIM}● ready   ○ coming soon${MANGO_RESET}"
+  echo ""
+
+  local choice
+  _mango_read_menu_choice "${#menu_items[@]}" choice
+  [[ "$choice" == "back" ]] && return 0
+  if [[ "$choice" -eq ${#menu_items[@]} ]]; then
+    return 0
+  fi
+
+  local selected="${in_cat[$((choice - 1))]}"
+  IFS='|' read -r tid _ _ _ _ _ status <<< "$selected"
+
+  if [[ "$status" != "ready" ]]; then
+    ui_message info "This tool is coming soon."
+    ui_pause
+    return 0
+  fi
+
+  _mango_run_conversion "$tid"
+}
+
+# ── Main menu ───────────────────────────────────────────────────────────────────
+
+_mango_main_menu() {
+  ui_home_panel
+
+  ui_menu \
+    "Quick Convert"  "pick a file → see all options" \
+    "Video & Audio"  "GIF, audio extraction, trim" \
+    "PDF Toolkit"    "convert, merge, compress" \
+    "Image Toolkit"  "compress, convert formats" \
+    "Developer"      "JSON, base64, hashes" \
+    "Exit"
+
+  local choice
+  _mango_read_menu_choice 6 choice 0
+
+  case "$choice" in
+    1) _mango_quick_convert ;;
+    2) _mango_category_menu "Video & Audio" ;;
+    3) _mango_category_menu "PDF" ;;
+    4) _mango_category_menu "Image" ;;
+    5) _mango_category_menu "Developer" ;;
+    6)
+      ui_clear
+      echo ""
+      echo -e "  ${MANGO_FG_MANGO}${MANGO_BOLD}Thanks for using Mango!${MANGO_RESET} ${MANGO_DIM}🥭${MANGO_RESET}"
+      echo ""
+      exit 0
+      ;;
+  esac
+}
+
+# ── Entry ───────────────────────────────────────────────────────────────────────
+
+main() {
+  if [[ "${1:-}" == "doctor" ]]; then
+    exec "$ROOT/bin/mango-doctor"
+  fi
+
+  if [[ ! -t 0 || ! -t 1 ]]; then
+    echo "Mango is an interactive terminal UI. Run it directly in your terminal:"
+    echo "  mango"
+    exit 1
+  fi
+
+  while true; do
+    _mango_main_menu
+  done
+}
+
+main "$@"

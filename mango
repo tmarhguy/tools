@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Mango launcher — delegates to bin/mango
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+exec "$ROOT/bin/mango" "$@"
