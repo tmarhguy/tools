@@ -60,7 +60,7 @@ mango_install_hint() {
     venv)
       local root
       root="$(_mango_deps_root)"
-      echo "cd $root && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt"
+      echo "cd $root && ./setup.sh   # or: python3 -m venv .venv && pip install -r requirements.txt"
       ;;
     *)
       echo "pip install $pkg   # inside project venv"
