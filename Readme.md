@@ -28,34 +28,36 @@ A polished, user-friendly **command-line utility collection** designed to house 
 
 This project is currently expanding into a comprehensive suite of offline tools divided by category.
 
+**Setup:** See [docs/INSTALL.md](docs/INSTALL.md) and run `mango doctor` to verify dependencies.
+
 ### Video & Audio (`tools/video/` & `tools/audio/`)
-- [x] **video-to-gif**: Converts a local video file (e.g., .mp4) or a remote video URL into a high-quality GIF. Automatically handles uploading the GIF to provide a URL for easy sharing. (`bin/to_gif`)
-- [ ] **extract-audio**: Pull MP3/WAV tracks from video files.
+- [x] **video-to-gif**: Converts a local video file into a high-quality GIF via ffmpeg. (`bin/to_gif`)
+- [x] **extract-audio**: Pull MP3/WAV tracks from video files. (`bin/extract-audio`)
+- [x] **trim-media**: Trim media duration with ffmpeg. (`bin/trim-media`)
 - [ ] **compress-video**: Optimize video files for web sharing.
-- [ ] **trim-media**: Quickly crop or trim media duration without re-encoding.
 
 ### PDF Toolkit (`tools/pdf/`)
 A complete offline alternative to tools like iLovePDF.
 - **Manipulation:**
-  - [ ] `merge-pdf`: Combine PDFs in the order you want.
-  - [ ] `split-pdf`: Separate one page or a whole set for easy conversion into independent PDF files.
+  - [x] `merge-pdf`: Combine PDFs in the order you want.
+  - [x] `split-pdf`: Separate pages into independent PDF files.
   - [ ] `organize-pdf`: Sort, delete, or add pages to your document.
-  - [ ] `rotate-pdf`: Rotate your PDFs the way you need them.
+  - [x] `rotate-pdf`: Rotate your PDFs the way you need them.
   - [ ] `crop-pdf`: Crop margins or specific areas of PDF documents.
 - **Conversion (From PDF):**
-  - [ ] `pdf-to-word`: Convert PDF into DOC/DOCX.
+  - [x] `pdf-to-word`: Convert PDF into DOCX (text-based PDFs; scanned docs need OCR).
   - [ ] `pdf-to-excel`: Pull data straight from PDFs into Excel.
   - [ ] `pdf-to-ppt`: Turn PDFs into PPTX slideshows.
-  - [ ] `pdf-to-jpg`: Convert each PDF page into a JPG.
+  - [x] `pdf-to-jpg`: Convert each PDF page into a JPG.
   - [ ] `pdf-to-md`: Turn PDFs into Markdown files for notes and LLMs.
 - **Conversion (To PDF):**
   - [ ] `word-to-pdf`: Convert DOC/DOCX to PDF.
   - [ ] `excel-to-pdf`: Convert EXCEL to PDF.
   - [ ] `ppt-to-pdf`: Convert PPTX to PDF.
-  - [ ] `jpg-to-pdf`: Convert images to PDF.
+  - [x] `jpg-to-pdf`: Convert images to PDF.
   - [ ] `html-to-pdf`: Convert webpages to PDF via URL.
 - **Optimization:**
-  - [ ] `compress-pdf`: Reduce file size while optimizing quality.
+  - [x] `compress-pdf`: Reduce file size (requires Ghostscript).
   - [ ] `pdf-to-pdfa`: Transform to ISO-standardized PDF/A for archiving.
 - **Security & Metadata:**
   - [ ] `protect-pdf`: Encrypt PDF documents with passwords.
@@ -71,36 +73,41 @@ A complete offline alternative to tools like iLovePDF.
   - [ ] `pdf-forms`: Create and fill interactive forms.
 
 ### Image Toolkit (`tools/image/`)
-- [ ] **compress-image**: Compress JPEG, PNG, WebP, GIF and SVG images locally (similar to TinyPNG but offline).
-- [ ] **convert-image**: Easily convert between formats (e.g., AVIF to PNG, JPG to WebP).
-- [ ] **strip-exif**: Remove metadata, EXIF, and GPS data for privacy before sharing.
+- [x] **compress-image**: Compress JPEG, PNG, WebP, and GIF images locally.
+- [x] **convert-image**: Convert between raster formats (jpg, png, webp, gif, bmp).
+- [x] **strip-exif**: Remove metadata and EXIF data for privacy before sharing.
 
 ### Developer Utilities (`tools/dev/`)
 - [ ] **merge-files**: Combine multiple files into single archives.
-- [ ] **format-json**: Pretty-print or minify JSON files.
-- [ ] **csv-to-json**: Rapid conversion of data tables to JSON arrays.
-- [ ] **base64-tool**: Encode and decode files or strings.
-- [ ] **hash-gen**: Generate MD5, SHA-1, and SHA-256 checksums.
+- [x] **format-json**: Pretty-print or minify JSON files.
+- [x] **csv-to-json**: Rapid conversion of data tables to JSON arrays.
+- [x] **base64-tool**: Encode and decode files or strings.
+- [x] **hash-gen**: Generate MD5, SHA-1, and SHA-256 checksums.
 
 ---
 
 ## Installation & Setup
 
-To make these tools available anywhere on your system, you can add the `bin/` directory to your system's `$PATH`.
+See **[docs/INSTALL.md](docs/INSTALL.md)** for full cross-platform instructions.
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/tmarhguy/to_gif.git ty-tools
-   cd ty-tools
-   ```
-2. Add the `bin/` folder to your PATH (in your `.bashrc` or `.zshrc`):
-   ```bash
-   export PATH="$PATH:/path/to/ty-tools/bin"
-   ```
-3. Now you can invoke the wrappers from anywhere:
-   ```bash
-   to_gif https://example.com/video.mp4
-   ```
+Quick start:
+
+```bash
+git clone https://github.com/tmarhguy/tools.git
+cd tools
+
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# Video tools (system package)
+brew install ffmpeg          # macOS
+# sudo apt install ffmpeg    # Linux
+
+./mango doctor               # verify setup
+./mango                      # interactive UI
+```
+
+To make these tools available anywhere on your system, add the `bin/` directory to your `$PATH`.
 
 ---
 
