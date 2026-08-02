@@ -71,7 +71,7 @@ This project is currently expanding into a comprehensive suite of offline tools 
 - [x] **video-to-gif**: Converts a local video file into a high-quality GIF via ffmpeg. (`bin/to_gif`)
 - [x] **extract-audio**: Pull MP3/WAV tracks from video files. (`bin/extract-audio`)
 - [x] **trim-media**: Trim media duration with ffmpeg. (`bin/trim-media`)
-- [ ] **compress-video**: Optimize video files for web sharing.
+- [x] **compress-video**: Optimize video files for web sharing. (`bin/compress-video`)
 
 ### PDF Toolkit (`tools/pdf/`)
 A complete offline alternative to tools like iLovePDF.
@@ -94,13 +94,13 @@ A complete offline alternative to tools like iLovePDF.
   - [x] `jpg-to-pdf`: Convert images to PDF.
   - [ ] `html-to-pdf`: Convert webpages to PDF via URL.
 - **Optimization:**
-  - [x] `compress-pdf`: Reduce file size (requires Ghostscript).
+  - [x] `compress-pdf`: Reduce file size (Ghostscript or pymupdf fallback).
   - [ ] `pdf-to-pdfa`: Transform to ISO-standardized PDF/A for archiving.
 - **Security & Metadata:**
-  - [ ] `protect-pdf`: Encrypt PDF documents with passwords.
-  - [ ] `unlock-pdf`: Remove PDF password security.
+  - [x] `protect-pdf`: Encrypt PDF documents with passwords.
+  - [x] `unlock-pdf`: Remove PDF password security.
   - [ ] `sign-pdf`: Request or apply electronic signatures.
-  - [ ] `watermark-pdf`: Stamp an image or text over your PDF.
+  - [x] `watermark-pdf`: Stamp an image or text over your PDF.
   - [ ] `redact-pdf`: Permanently remove sensitive information.
 - **Advanced / AI:**
   - [ ] `ocr-pdf`: Convert scanned PDF into searchable documents.
