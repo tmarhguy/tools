@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Wrapper — Compress Video
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TOOL="$ROOT/tools/video/compress-video.sh"
+
+if [[ ! -x "$TOOL" ]]; then
+  echo "Error: Compress Video tool is not installed yet." >&2
+  echo "Expected script: $TOOL" >&2
+  exit 1
+fi
+
+exec "$TOOL" "$@"
