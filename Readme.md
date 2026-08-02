@@ -1,9 +1,15 @@
 # Mango Tools
 
+
 ![status](https://img.shields.io/badge/status-active_development-2ea043?style=for-the-badge)
 ![utility](https://img.shields.io/badge/utility-command_line-2563EB?style=for-the-badge)
 
 A polished, user-friendly **command-line utility collection** designed to house all my frequently used tools in one place. I am not the biggest fan of intrusive online converters with ads, paywalls, and network issues. Everything here runs cleanly and quickly right from the terminal.
+
+<p align="center">
+  <img src="media/title_screen_mango.png" alt="Mango — My Toolkit Hub" width="720">
+</p>
+
 
 ---
 
@@ -18,9 +24,40 @@ A polished, user-friendly **command-line utility collection** designed to house 
 ## Table of Contents
 
 - [Why this Repository?](#why-this-repository)
+- [The Mango UI](docs/mango-ui.md)
 - [Available & Planned Tools](#available--planned-tools)
-- [Installation & Setup](#installation--setup)
+- [Installation & Setup](docs/install.md)
 - [Author](#author)
+
+---
+
+## The Mango UI
+
+Run `./mango` anywhere to open the interactive hub — pick a category, drop a file, and let Mango guide the conversion.
+
+<p align="center">
+  <img src="media/full_ui_start_page.png" alt="Mango full start page — header, main menu, and choice prompt" width="800">
+</p>
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Main menu</strong><br>
+      <sub>Pick a category</sub>
+      <br><br>
+      <img src="media/main_menu.png" alt="Mango main menu" width="420">
+    </td>
+    <td align="center" width="50%">
+      <strong>Enter choice</strong><br>
+      <sub>Type <code>1</code>–<code>6</code></sub>
+      <br><br>
+      <img src="media/enter_choice.png" alt="Mango choice prompt" width="420">
+    </td>
+  </tr>
+</table>
+
+More detail: [docs/mango-ui.md](docs/mango-ui.md)
+
 
 ---
 
@@ -28,7 +65,7 @@ A polished, user-friendly **command-line utility collection** designed to house 
 
 This project is currently expanding into a comprehensive suite of offline tools divided by category.
 
-**Setup:** See [docs/INSTALL.md](docs/INSTALL.md) and run `mango doctor` to verify dependencies.
+**Setup:** See [docs/install.md](docs/install.md) and run `mango doctor` to verify dependencies.
 
 ### Video & Audio (`tools/video/` & `tools/audio/`)
 - [x] **video-to-gif**: Converts a local video file into a high-quality GIF via ffmpeg. (`bin/to_gif`)
@@ -88,26 +125,20 @@ A complete offline alternative to tools like iLovePDF.
 
 ## Installation & Setup
 
-See **[docs/INSTALL.md](docs/INSTALL.md)** for full cross-platform instructions.
+Full instructions: **[docs/install.md](docs/install.md)**
 
-Quick start:
+**One-liner** (installs to `~/.local/share/mango`, then runs offline):
 
 ```bash
-git clone https://github.com/tmarhguy/tools.git
-cd tools
-
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# Video tools (system package)
-brew install ffmpeg          # macOS
-# sudo apt install ffmpeg    # Linux
-
-./mango doctor               # verify setup
-./mango                      # interactive UI
+curl -fsSL https://raw.githubusercontent.com/tmarhguy/tools/main/setup.sh | bash
 ```
 
-To make these tools available anywhere on your system, add the `bin/` directory to your `$PATH`.
+**Or clone + setup:**
+
+```bash
+git clone https://github.com/tmarhguy/tools.git && cd tools
+./setup.sh
+```
 
 ---
 
