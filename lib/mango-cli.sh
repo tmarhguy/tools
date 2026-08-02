@@ -18,6 +18,8 @@ MANGO_WIDTH=""
 MANGO_QUALITY=""
 MANGO_ROTATE=""
 MANGO_FORMAT=""
+MANGO_PASSWORD=""
+MANGO_PRESET=""
 
 mango_die() {
   printf 'Error: %s\n' "$*" >&2
@@ -78,6 +80,8 @@ mango_parse_io() {
       -q|--quality) MANGO_QUALITY="$2"; shift 2 ;;
       -r|--rotate) MANGO_ROTATE="$2"; shift 2 ;;
       -f|--format) MANGO_FORMAT="$2"; shift 2 ;;
+      -p|--password) MANGO_PASSWORD="$2"; shift 2 ;;
+      --preset) MANGO_PRESET="$2"; shift 2 ;;
       --) shift; positional+=("$@"); break ;;
       -*) mango_die "Unknown option: $1" ;;
       *) positional+=("$1"); shift ;;
