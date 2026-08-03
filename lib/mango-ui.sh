@@ -20,8 +20,6 @@ if [[ "$MANGO_UI_WIDTH" -lt 60 ]]; then
 elif [[ "$MANGO_UI_WIDTH" -gt 100 ]]; then
   MANGO_UI_WIDTH=100
 fi
-MANGO_UI_INNER=$((MANGO_UI_WIDTH - 4))
-MANGO_ALT_SCREEN=0
 
 _mango_repeat() {
   local char="$1" count="$2" i
@@ -39,31 +37,77 @@ _mango_strip_ansi() {
   sed 's/\x1b\[[0-9;]*m//g'
 }
 
-ui_enter_alt_screen() {
+# ── TUI primitives (alternate screen + in-place updates) ─────────────────────
+
+_MANGO_TUI_ACTIVE=0
+_MANGO_TUI_ROW=1
+
+_mango_tui_enter() {
+  _MANGO_TUI_ROW=1
+  _MANGO_TUI_ACTIVE=1
   [[ -t 1 ]] || return 0
-  [[ "${MANGO_NO_ALT_SCREEN:-0}" -eq 1 ]] && return 0
-  printf '\033[?1049h\033[H'
-  MANGO_ALT_SCREEN=1
+  printf '\033[?1049h\033[H\033[J\033[?25l'
 }
 
-ui_leave_alt_screen() {
-  [[ "${MANGO_ALT_SCREEN:-0}" -eq 1 ]] || return 0
-  printf '\033[?1049l'
-  MANGO_ALT_SCREEN=0
+_mango_tui_leave() {
+  [[ "$_MANGO_TUI_ACTIVE" == "1" ]] || return 0
+  [[ -t 1 ]] && printf '\033[?25h\033[?1049l'
+  _MANGO_TUI_ACTIVE=0
+}
+
+_mango_tui_home() {
+  [[ "$_MANGO_TUI_ACTIVE" == "1" ]] || return 0
+  _MANGO_TUI_ROW=1
+  [[ -t 1 ]] && printf '\033[H\033[J'
+}
+
+_mango_out() {
+  echo -e "$1"
+  if [[ "$_MANGO_TUI_ACTIVE" == "1" ]]; then
+    _MANGO_TUI_ROW=$((_MANGO_TUI_ROW + 1))
+  fi
+}
+
+_mango_cursor_to() {
+  local row="$1"
+  local col="${2:-1}"
+  printf '\033[%d;%dH' "$row" "$col"
+}
+
+_mango_redraw_at() {
+  local row="$1"
+  local text="$2"
+  _mango_cursor_to "$row" 1
+  printf '\033[2K'
+  echo -e "$text"
+}
+
+_mango_box_line_str() {
+  local text="$1"
+  local inner=$((MANGO_UI_WIDTH - 4))
+  local plain
+  plain=$(echo -e "$text" | _mango_strip_ansi)
+  local pad=$((inner - 2 - ${#plain}))
+  if [[ "$pad" -lt 0 ]]; then pad=0; fi
+  printf '%s' "${MANGO_FG_MANGO}│${MANGO_RESET} ${text}$(_mango_repeat ' ' "$pad") ${MANGO_FG_MANGO}│${MANGO_RESET}"
 }
 
 ui_clear() {
-  if [[ -t 1 ]]; then
-    # Avoid spawning `clear` — home + erase is much faster
-    printf '\033[H\033[2J'
+  if [[ ! -t 1 ]]; then
+    return
+  fi
+  if [[ "$_MANGO_TUI_ACTIVE" == "1" ]]; then
+    _mango_tui_home
+  else
+    clear
   fi
 }
 
 ui_logo() {
   # Claude-style sparkle mascot (layout only — color is Mango gold, not Claude orange)
-  echo -e "${MANGO_FG_MANGO}${MANGO_BOLD} ▐▛███▜▌${MANGO_RESET}"
-  echo -e "${MANGO_FG_MANGO}${MANGO_BOLD}▝▜█████▛▘${MANGO_RESET}"
-  echo -e "${MANGO_FG_MANGO}${MANGO_BOLD}  ▘▘ ▝▝${MANGO_RESET}"
+  _mango_out "${MANGO_FG_MANGO}${MANGO_BOLD} ▐▛███▜▌${MANGO_RESET}"
+  _mango_out "${MANGO_FG_MANGO}${MANGO_BOLD}▝▜█████▛▘${MANGO_RESET}"
+  _mango_out "${MANGO_FG_MANGO}${MANGO_BOLD}  ▘▘ ▝▝${MANGO_RESET}"
 }
 
 _ui_brand_lines() {
@@ -74,11 +118,11 @@ _ui_brand_lines() {
 
 ui_header() {
   ui_clear
-  echo ""
+  _mango_out ""
   ui_box_open
   _ui_brand_lines
   ui_box_close
-  echo ""
+  _mango_out ""
 }
 
 ui_home_panel() {
@@ -97,53 +141,48 @@ ui_home_panel() {
 
 ui_title_bar() {
   local title="$1"
-  local inner=$MANGO_UI_INNER
+  local inner=$((MANGO_UI_WIDTH - 4))
   local line
   line=$(_mango_pad_center " $title " "$inner")
 
-  echo ""
-  echo -e "${MANGO_FG_MANGO}╔$(_mango_repeat '═' "$inner")╗${MANGO_RESET}"
-  echo -e "${MANGO_FG_MANGO}║${MANGO_RESET}${MANGO_YELLOW}${MANGO_BOLD}${line}${MANGO_RESET}${MANGO_FG_MANGO}║${MANGO_RESET}"
-  echo -e "${MANGO_FG_MANGO}╚$(_mango_repeat '═' "$inner")╝${MANGO_RESET}"
-  echo ""
+  _mango_out ""
+  _mango_out "${MANGO_FG_MANGO}╔$(_mango_repeat '═' "$inner")╗${MANGO_RESET}"
+  _mango_out "${MANGO_FG_MANGO}║${MANGO_RESET}${MANGO_YELLOW}${MANGO_BOLD}${line}${MANGO_RESET}${MANGO_FG_MANGO}║${MANGO_RESET}"
+  _mango_out "${MANGO_FG_MANGO}╚$(_mango_repeat '═' "$inner")╝${MANGO_RESET}"
+  _mango_out ""
 }
 
 ui_box_open() {
   local title="${1:-}"
-  local inner=$MANGO_UI_INNER
+  local inner=$((MANGO_UI_WIDTH - 4))
 
-  echo -e "${MANGO_FG_MANGO}┌$(_mango_repeat '─' "$inner")┐${MANGO_RESET}"
+  _mango_out "${MANGO_FG_MANGO}┌$(_mango_repeat '─' "$inner")┐${MANGO_RESET}"
   if [[ -n "$title" ]]; then
     local label=" $title "
     local pad=$((inner - ${#label}))
-    echo -e "${MANGO_FG_MANGO}│${MANGO_RESET}${MANGO_YELLOW}${MANGO_BOLD}${label}${MANGO_RESET}$(_mango_repeat ' ' "$pad")${MANGO_FG_MANGO}│${MANGO_RESET}"
-    echo -e "${MANGO_FG_MANGO}├$(_mango_repeat '─' "$inner")┤${MANGO_RESET}"
+    _mango_out "${MANGO_FG_MANGO}│${MANGO_RESET}${MANGO_YELLOW}${MANGO_BOLD}${label}${MANGO_RESET}$(_mango_repeat ' ' "$pad")${MANGO_FG_MANGO}│${MANGO_RESET}"
+    _mango_out "${MANGO_FG_MANGO}├$(_mango_repeat '─' "$inner")┤${MANGO_RESET}"
   fi
 }
 
 ui_box_line() {
   local text="$1"
-  local inner=$MANGO_UI_INNER
-  local plain
-  plain=$(printf '%b' "$text" | _mango_strip_ansi)
-  local pad=$((inner - 2 - ${#plain}))
-  if [[ "$pad" -lt 0 ]]; then pad=0; fi
-  echo -e "${MANGO_FG_MANGO}│${MANGO_RESET} ${text}$(_mango_repeat ' ' "$pad") ${MANGO_FG_MANGO}│${MANGO_RESET}"
+  _mango_out "$(_mango_box_line_str "$text")"
 }
 
 ui_box_close() {
-  local inner=$MANGO_UI_INNER
-  echo -e "${MANGO_FG_MANGO}└$(_mango_repeat '─' "$inner")┘${MANGO_RESET}"
+  local inner=$((MANGO_UI_WIDTH - 4))
+  _mango_out "${MANGO_FG_MANGO}└$(_mango_repeat '─' "$inner")┘${MANGO_RESET}"
 }
 
 ui_box_rule() {
-  local inner=$MANGO_UI_INNER
-  echo -e "${MANGO_FG_MANGO}├$(_mango_repeat '─' "$inner")┤${MANGO_RESET}"
+  local inner=$((MANGO_UI_WIDTH - 4))
+  _mango_out "${MANGO_FG_MANGO}├$(_mango_repeat '─' "$inner")┤${MANGO_RESET}"
 }
 
 ui_divider() {
-  local inner=$MANGO_UI_INNER
-  echo -e "${MANGO_DIM}$(_mango_repeat '─' "$inner")${MANGO_RESET}"
+  local inner=$((MANGO_UI_WIDTH - 4))
+  _mango_out "${MANGO_DIM}$(_mango_repeat '─' "$inner")${MANGO_RESET}"
 }
 
 ui_menu() {
@@ -180,6 +219,180 @@ ui_menu() {
   echo ""
 }
 
+# Optional hook: set to a function name to draw page content above an arrow menu.
+_MANGO_PAGE_DRAW_FN=""
+MANGO_MENU_FOOTER=""
+
+_mango_menu_item_content() {
+  local index="$1"
+  local selected="$2"
+  local style="$3"
+  local item="$4"
+  local label="${item%%|*}"
+  local rest="${item#*|}"
+  local lower marker desc status icon color
+
+  lower=$(printf '%s' "$label" | tr '[:upper:]' '[:lower:]')
+  if [[ "$index" -eq "$selected" ]]; then
+    marker="${MANGO_CYAN}${MANGO_BOLD}❯${MANGO_RESET}"
+  else
+    marker=" "
+  fi
+
+  if [[ "$style" == "main" ]]; then
+    desc="$rest"
+    if [[ "$lower" == "exit" ]]; then
+      printf '%s' "  ${marker} ${MANGO_RED}${MANGO_BOLD}${label}${MANGO_RESET}"
+    else
+      printf '%s' "  ${marker} ${MANGO_WHITE}${label}${MANGO_RESET}  ${MANGO_DIM}${desc}${MANGO_RESET}"
+    fi
+  else
+    status="$rest"
+    if [[ "$status" == "ready" ]]; then
+      icon="●"
+      color="$MANGO_GREEN"
+    elif [[ "$status" == "soon" ]]; then
+      icon="○"
+      color="$MANGO_DIM"
+    else
+      icon="·"
+      color="$MANGO_WHITE"
+    fi
+
+    if [[ "$lower" == "back" ]]; then
+      printf '%s' "  ${marker} ${MANGO_DIM}← ${label}${MANGO_RESET}"
+    elif [[ "$lower" == "exit" ]]; then
+      printf '%s' "  ${marker} ${MANGO_RED}${MANGO_BOLD}${label}${MANGO_RESET}"
+    else
+      printf '%s' "  ${marker} ${color}${icon}${MANGO_RESET}  ${color}${label}${MANGO_RESET}"
+    fi
+  fi
+}
+
+_mango_menu_item_line() {
+  local index="$1"
+  local selected="$2"
+  local style="$3"
+  local item="$4"
+  local content
+  content=$(_mango_menu_item_content "$index" "$selected" "$style" "$item")
+  _mango_box_line_str "$content"
+}
+
+_mango_menu_draw_prefix() {
+  local layout="$1"
+
+  _mango_out ""
+  if [[ "$layout" == "home" ]]; then
+    ui_box_open
+    _ui_brand_lines
+    ui_box_rule
+    ui_box_line "  ${MANGO_DIM}You are here:${MANGO_RESET} ${MANGO_FG_MANGO}${MANGO_BOLD}Home${MANGO_RESET}"
+    ui_box_rule
+    ui_box_line "  ${MANGO_WHITE}Use favorite tools from terminal.${MANGO_RESET}"
+    ui_box_line "  ${MANGO_DIM}Pick a file and let Mango guide you.${MANGO_RESET}"
+    ui_box_close
+    _mango_out ""
+  elif [[ "$layout" == "page" && -n "${_MANGO_PAGE_DRAW_FN:-}" ]]; then
+    "$_MANGO_PAGE_DRAW_FN"
+  fi
+}
+
+_MANGO_ITEM_ROWS=()
+
+_mango_menu_draw_full() {
+  local layout="$1"
+  local style="$2"
+  local title="$3"
+  local selected="$4"
+  local footer="$5"
+  shift 5
+  local -a items=("$@")
+  local i=0 item row_start
+
+  _MANGO_ITEM_ROWS=()
+  _mango_tui_home
+  _mango_menu_draw_prefix "$layout"
+
+  ui_box_open "$title"
+  for item in "${items[@]}"; do
+    row_start=$_MANGO_TUI_ROW
+    ui_box_line "$(_mango_menu_item_content "$i" "$selected" "$style" "$item")"
+    _MANGO_ITEM_ROWS+=("$row_start")
+    ((i++)) || true
+  done
+  ui_box_rule
+  ui_box_line "  ${MANGO_DIM}↑↓ navigate · Enter select${MANGO_RESET}"
+  ui_box_close
+
+  if [[ -n "$footer" ]]; then
+    _mango_out "  ${footer}"
+    _mango_out ""
+  fi
+}
+
+_mango_menu_update_selection() {
+  local old="$1"
+  local new="$2"
+  local style="$3"
+  local old_row="$4"
+  local new_row="$5"
+  shift 5
+  local -a items=("$@")
+
+  _mango_redraw_at "$old_row" "$(_mango_menu_item_line "$old" "$new" "$style" "${items[$old]}")"
+  _mango_redraw_at "$new_row" "$(_mango_menu_item_line "$new" "$new" "$style" "${items[$new]}")"
+}
+
+# Interactive arrow-key menu. Sets varname to 1-based index of selected item.
+# layout: home (brand panel) | page (calls _MANGO_PAGE_DRAW_FN) | plain
+# style: main (label|desc) | tools (label|ready|soon|empty)
+ui_menu_select() {
+  local varname="$1"
+  local layout="$2"
+  local style="$3"
+  local title="$4"
+  shift 4
+  local -a items=("$@")
+  local selected=0 count=${#items[@]} key footer="${MANGO_MENU_FOOTER:-}"
+  local -a item_rows=()
+  local old
+
+  [[ "$count" -gt 0 ]] || return 1
+
+  _mango_tui_enter
+
+  _mango_menu_draw_full "$layout" "$style" "$title" "$selected" "$footer" "${items[@]}"
+  item_rows=("${_MANGO_ITEM_ROWS[@]}")
+
+  while true; do
+    key=$(_mango_read_nav_key)
+    case "$key" in
+      up)
+        old=$selected
+        selected=$(( (selected - 1 + count) % count ))
+        if [[ "$old" != "$selected" ]]; then
+          _mango_menu_update_selection "$old" "$selected" "$style" \
+            "${item_rows[$old]}" "${item_rows[$selected]}" "${items[@]}"
+        fi
+        ;;
+      down)
+        old=$selected
+        selected=$(( (selected + 1) % count ))
+        if [[ "$old" != "$selected" ]]; then
+          _mango_menu_update_selection "$old" "$selected" "$style" \
+            "${item_rows[$old]}" "${item_rows[$selected]}" "${items[@]}"
+        fi
+        ;;
+      enter)
+        _mango_tui_leave
+        printf -v "$varname" '%s' "$((selected + 1))"
+        return 0
+        ;;
+    esac
+  done
+}
+
 ui_footer() {
   local text="${1-}"
   if [[ -z "$text" ]]; then
@@ -201,19 +414,6 @@ ui_prompt() {
   ui_box_close
   echo -ne "  ${MANGO_CYAN}❯${MANGO_RESET} "
   read -er "$varname"
-}
-
-ui_prompt_secret() {
-  local message="$1"
-  local varname="$2"
-
-  ui_box_open
-  ui_box_line "${MANGO_CYAN}${MANGO_BOLD}❯${MANGO_RESET} ${message}"
-  ui_box_line "  ${MANGO_DIM}(input hidden)${MANGO_RESET}"
-  ui_box_close
-  echo -ne "  ${MANGO_CYAN}❯${MANGO_RESET} "
-  read -rs "$varname"
-  echo ""
 }
 
 ui_message() {
@@ -241,8 +441,8 @@ ui_tool_header() {
   ui_header
   ui_title_bar "$name"
   if [[ -n "$category" ]]; then
-    echo -e "  ${MANGO_DIM}Category:${MANGO_RESET} ${MANGO_MAGENTA}${category}${MANGO_RESET}"
-    echo ""
+    _mango_out "  ${MANGO_DIM}Category:${MANGO_RESET} ${MANGO_MAGENTA}${category}${MANGO_RESET}"
+    _mango_out ""
   fi
 }
 
@@ -291,8 +491,8 @@ ui_breadcrumb() {
     fi
   done
 
-  echo -e "  ${MANGO_DIM}You are here:${MANGO_RESET} ${trail}"
-  echo ""
+  _mango_out "  ${MANGO_DIM}You are here:${MANGO_RESET} ${trail}"
+  _mango_out ""
 }
 
 ui_prompt_default() {
@@ -350,23 +550,242 @@ _mango_expand_path() {
   echo "$path"
 }
 
-ui_list_matching_files() {
+_mango_collect_matching_files() {
   local -a exts=("$@")
   local -a found=()
   local f ext pattern
 
-  shopt -s nullglob
+  shopt -s nullglob nocaseglob
   for ext in "${exts[@]}"; do
+    ext=$(printf '%s' "$ext" | tr '[:upper:]' '[:lower:]')
     pattern="*.${ext}"
     for f in $pattern; do
       [[ -f "$f" ]] && found+=("$f")
     done
   done
-  shopt -u nullglob
+  shopt -u nullglob nocaseglob
 
   if [[ ${#found[@]} -eq 0 ]]; then
     return 1
   fi
+
+  local IFS=$'\n'
+  found=($(printf '%s\n' "${found[@]}" | LC_ALL=C sort -fu))
+
+  local item
+  for item in "${found[@]}"; do
+    printf '%s\n' "$item"
+  done
+  return 0
+}
+
+_mango_collect_all_files() {
+  local f
+  shopt -s nullglob
+  for f in *; do
+    [[ -f "$f" ]] && printf '%s\n' "$f"
+  done
+  shopt -u nullglob
+  return 0
+}
+
+_mango_exts_is_any() {
+  local ext
+  for ext in "$@"; do
+    ext=$(printf '%s' "$ext" | tr '[:upper:]' '[:lower:]')
+    [[ "$ext" == "any" || "$ext" == "various" || "$ext" == "same" ]] && return 0
+  done
+  return 1
+}
+
+_mango_format_ext_label() {
+  local -a parts=()
+  local ext
+  for ext in "$@"; do
+    ext=$(printf '%s' "$ext" | tr '[:upper:]' '[:lower:]')
+    if [[ "$ext" == "any" || "$ext" == "various" || "$ext" == "same" ]]; then
+      printf '%s' "any file"
+      return 0
+    fi
+    parts+=(".${ext}")
+  done
+  local joined
+  joined=$(IFS=', '; echo "${parts[*]}")
+  printf '%s' "$joined"
+}
+
+_mango_read_into_array() {
+  local varname="$1"
+  shift
+  local -a _items=()
+  local line
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && _items+=("$line")
+  done < <(_mango_collect_matching_files "$@") || true
+  if ((${#_items[@]} > 0)); then
+    eval "$varname=(\"\${_items[@]}\")"
+  else
+    eval "$varname=()"
+  fi
+}
+
+_mango_read_all_into_array() {
+  local varname="$1"
+  local -a _items=()
+  local line
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && _items+=("$line")
+  done < <(_mango_collect_all_files) || true
+  if ((${#_items[@]} > 0)); then
+    local IFS=$'\n'
+    _items=($(printf '%s\n' "${_items[@]}" | LC_ALL=C sort -fu))
+    eval "$varname=(\"\${_items[@]}\")"
+  else
+    eval "$varname=()"
+  fi
+}
+
+_mango_read_nav_key() {
+  local k k2 k3
+
+  IFS= read -rsn1 k
+  if [[ "$k" == $'\x1b' ]]; then
+    if IFS= read -rsn1 -t 1 k2; then
+      if [[ "$k2" == '[' ]]; then
+        IFS= read -rsn1 k3
+        case "$k3" in
+          A) printf '%s' "up"; return 0 ;;
+          B) printf '%s' "down"; return 0 ;;
+          C) printf '%s' "right"; return 0 ;;
+          D) printf '%s' "left"; return 0 ;;
+        esac
+      fi
+    fi
+    printf '%s' "esc"
+    return 0
+  fi
+
+  if [[ -z "$k" || "$k" == $'\n' || "$k" == $'\r' ]]; then
+    printf '%s' "enter"
+    return 0
+  fi
+
+  printf '%s' "$k"
+}
+
+_mango_file_item_content() {
+  local index="$1"
+  local selected="$2"
+  local file="$3"
+  local size marker
+
+  size=$(_mango_file_size "$file")
+  if [[ "$index" -eq "$selected" ]]; then
+    marker="${MANGO_CYAN}${MANGO_BOLD}❯${MANGO_RESET}"
+  else
+    marker=" "
+  fi
+  printf '%s' "  ${marker} ${MANGO_WHITE}${file}${MANGO_RESET}  ${MANGO_DIM}${size}${MANGO_RESET}"
+}
+
+_mango_file_item_line() {
+  local index="$1"
+  local selected="$2"
+  local file="$3"
+  _mango_box_line_str "$(_mango_file_item_content "$index" "$selected" "$file")"
+}
+
+_mango_file_picker_draw_full() {
+  local title="$1"
+  local selected="$2"
+  shift 2
+  local -a items=("$@")
+  local i=0 row_start
+
+  _MANGO_ITEM_ROWS=()
+  _mango_tui_home
+  _mango_out ""
+  ui_box_open "$title"
+  if ((${#items[@]} == 0)); then
+    ui_box_line "  ${MANGO_DIM}No matching files in this directory.${MANGO_RESET}"
+  else
+    for i in "${!items[@]}"; do
+      row_start=$_MANGO_TUI_ROW
+      ui_box_line "$(_mango_file_item_content "$i" "$selected" "${items[$i]}")"
+      _MANGO_ITEM_ROWS+=("$row_start")
+    done
+  fi
+  ui_box_rule
+  if ((${#items[@]} == 0)); then
+    ui_box_line "  ${MANGO_DIM}P type path · Q go back${MANGO_RESET}"
+  else
+    ui_box_line "  ${MANGO_DIM}↑↓ navigate · Enter select · P type path · Q go back${MANGO_RESET}"
+  fi
+  ui_box_close
+  _mango_out ""
+}
+
+# Returns 0 on select, 2 to type a path, 3 to go back.
+ui_arrow_select_file() {
+  local varname="$1"
+  local title="$2"
+  shift 2
+  local -a items=("$@")
+  local count=${#items[@]}
+  local selected=0 key old
+  local -a item_rows=()
+
+  _mango_tui_enter
+
+  _mango_file_picker_draw_full "$title" "$selected" "${items[@]}"
+  item_rows=("${_MANGO_ITEM_ROWS[@]}")
+
+  while true; do
+    key=$(_mango_read_nav_key)
+
+    case "$key" in
+      up)
+        [[ "$count" -gt 0 ]] || continue
+        old=$selected
+        selected=$(( (selected - 1 + count) % count ))
+        if [[ "$old" != "$selected" ]]; then
+          _mango_redraw_at "${item_rows[$old]}" "$(_mango_file_item_line "$old" "$selected" "${items[$old]}")"
+          _mango_redraw_at "${item_rows[$selected]}" "$(_mango_file_item_line "$selected" "$selected" "${items[$selected]}")"
+        fi
+        ;;
+      down)
+        [[ "$count" -gt 0 ]] || continue
+        old=$selected
+        selected=$(( (selected + 1) % count ))
+        if [[ "$old" != "$selected" ]]; then
+          _mango_redraw_at "${item_rows[$old]}" "$(_mango_file_item_line "$old" "$selected" "${items[$old]}")"
+          _mango_redraw_at "${item_rows[$selected]}" "$(_mango_file_item_line "$selected" "$selected" "${items[$selected]}")"
+        fi
+        ;;
+      enter)
+        [[ "$count" -gt 0 ]] || continue
+        _mango_tui_leave
+        printf -v "$varname" '%s' "${items[$selected]}"
+        return 0
+        ;;
+      p|P)
+        _mango_tui_leave
+        return 2
+        ;;
+      q|Q|esc)
+        _mango_tui_leave
+        return 3
+        ;;
+    esac
+  done
+}
+
+ui_list_matching_files() {
+  local -a exts=("$@")
+  local -a found=()
+
+  _mango_read_into_array found "${exts[@]}"
+  [[ ${#found[@]} -gt 0 ]] || return 1
 
   ui_box_open "Files in $(pwd)"
   local i=1
@@ -388,15 +807,40 @@ ui_prompt_file() {
   local -a allowed_exts=("$@")
 
   while true; do
+    local -a found=()
+    local filter_label title picked rc path
+
     if [[ ${#allowed_exts[@]} -gt 0 ]]; then
-      ui_list_matching_files "${allowed_exts[@]}" || true
+      if _mango_exts_is_any "${allowed_exts[@]}"; then
+        _mango_read_all_into_array found
+        filter_label="any file"
+      else
+        _mango_read_into_array found "${allowed_exts[@]}"
+        filter_label=$(_mango_format_ext_label "${allowed_exts[@]}")
+      fi
+      title="Select input — ${filter_label} in $(pwd)"
+    else
+      _mango_read_all_into_array found
+      title="Select file in $(pwd)"
     fi
+
+    ui_arrow_select_file picked "$title" "${found[@]}"
+    rc=$?
+    if [[ "$rc" -eq 0 ]]; then
+      path=$(_mango_expand_path "$picked")
+      printf -v "$varname" '%s' "$path"
+      return 0
+    elif [[ "$rc" -eq 3 ]]; then
+      return 1
+    fi
+
+    ui_clear
+    echo ""
 
     ui_prompt "$message" _MANGO_FILE_INPUT
     local raw="$_MANGO_FILE_INPUT"
     [[ -z "$raw" ]] && continue
 
-    local path
     path=$(_mango_expand_path "$raw")
 
     if [[ ! -e "$path" ]]; then
@@ -410,7 +854,7 @@ ui_prompt_file() {
       continue
     fi
 
-    if [[ ${#allowed_exts[@]} -gt 0 ]]; then
+    if [[ ${#allowed_exts[@]} -gt 0 ]] && ! _mango_exts_is_any "${allowed_exts[@]}"; then
       local ext="${path##*.}"
       ext=$(printf '%s' "$ext" | tr '[:upper:]' '[:lower:]')
       local ok=0 allowed
@@ -422,8 +866,8 @@ ui_prompt_file() {
       done
       if [[ "$ok" -eq 0 ]]; then
         local joined
-        joined=$(IFS=', '; echo "${allowed_exts[*]}")
-        ui_message warning "Expected one of: ${joined}  (got .${ext})"
+        joined=$(_mango_format_ext_label "${allowed_exts[@]}")
+        ui_message warning "Expected ${joined}  (got .${ext})"
         echo ""
         continue
       fi
@@ -511,14 +955,4 @@ ui_suggest_output() {
   base=$(basename "$input")
   base="${base%.*}"
   echo "${dir}/${base}.${new_ext}"
-}
-
-ui_suggest_output_dir() {
-  local input="$1"
-  local suffix="${2:-_out}"
-  local dir base
-  dir=$(dirname "$input")
-  base=$(basename "$input")
-  base="${base%.*}"
-  echo "${dir}/${base}${suffix}"
 }

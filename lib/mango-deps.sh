@@ -35,7 +35,13 @@ mango_install_hint() {
   case "$pkg" in
     ffmpeg)
       case "$os" in
-        macos)   echo "brew install ffmpeg" ;;
+        macos)
+          if command -v brew &>/dev/null; then
+            echo "brew install ffmpeg"
+          else
+            echo "./setup.sh   # installs bundled ffmpeg in .venv (no Homebrew needed)"
+          fi
+          ;;
         linux)   echo "sudo apt install ffmpeg   # or: sudo dnf install ffmpeg" ;;
         windows) echo "winget install Gyan.FFmpeg" ;;
         *)       echo "Install ffmpeg from https://ffmpeg.org/download.html" ;;
@@ -60,7 +66,7 @@ mango_install_hint() {
     venv)
       local root
       root="$(_mango_deps_root)"
-      echo "cd $root && ./setup.sh   # or: python3 -m venv .venv && pip install -r requirements.txt"
+      echo "cd $root && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt"
       ;;
     *)
       echo "pip install $pkg   # inside project venv"
@@ -77,6 +83,29 @@ require_cmd() {
   echo "Error: '$cmd' is required but not found." >&2
   echo "Install: $(mango_install_hint "$hint_pkg")" >&2
   return 1
+}
+
+# Resolve ffmpeg: system PATH first, then imageio-ffmpeg binary in the project venv.
+mango_ffmpeg() {
+  if command -v ffmpeg &>/dev/null; then
+    command -v ffmpeg
+    return 0
+  fi
+  local py path
+  py="$(mango_python)" || return 1
+  path=$("$py" -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())' 2>/dev/null) || return 1
+  [[ -n "$path" && -x "$path" ]] || return 1
+  printf '%s' "$path"
+}
+
+require_ffmpeg() {
+  local ffmpeg_bin
+  ffmpeg_bin=$(mango_ffmpeg) || {
+    echo "Error: ffmpeg is required but not found." >&2
+    echo "Install: $(mango_install_hint ffmpeg)" >&2
+    return 1
+  }
+  printf '%s' "$ffmpeg_bin"
 }
 
 require_python() {
@@ -120,5 +149,47 @@ mango_check_python_pkg() {
     Pillow) "$py" -c "import PIL" &>/dev/null ;;
     pymupdf) "$py" -c "import fitz" &>/dev/null ;;
     *) "$py" -c "import ${import_name//-/_}" &>/dev/null ;;
+  esac
+}
+
+# Returns 0 when external/Python deps for a Mango tool are satisfied.
+mango_tool_deps_ok() {
+  local tool_id="$1"
+  case "$tool_id" in
+    video-to-gif|extract-audio|trim-media)
+      mango_ffmpeg &>/dev/null
+      ;;
+    compress-pdf)
+      command -v gs &>/dev/null
+      ;;
+    pdf-to-word)
+      mango_check_python_pkg pdf2docx
+      ;;
+    pdf-to-jpg|jpg-to-pdf)
+      mango_check_python_pkg fitz
+      ;;
+    merge-pdf|split-pdf|rotate-pdf)
+      mango_check_python_pkg pypdf
+      ;;
+    compress-image|convert-image|strip-exif)
+      mango_check_python_pkg PIL
+      ;;
+    *) return 0 ;;
+  esac
+}
+
+mango_tool_deps_hint() {
+  local tool_id="$1"
+  case "$tool_id" in
+    video-to-gif|extract-audio|trim-media)
+      printf '%s\n' "$(mango_install_hint ffmpeg)"
+      ;;
+    compress-pdf)
+      printf '%s\n' "$(mango_install_hint ghostscript)"
+      ;;
+    pdf-to-word|pdf-to-jpg|jpg-to-pdf|merge-pdf|split-pdf|rotate-pdf|compress-image|convert-image|strip-exif)
+      printf '%s\n' "$(mango_install_hint venv)"
+      ;;
+    *) return 1 ;;
   esac
 }
