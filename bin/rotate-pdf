@@ -1,4 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$ROOT/tools/pdf/rotate-pdf.sh" "$@"
+MANGO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/mango-cli.sh
+source "$MANGO_ROOT/lib/mango-cli.sh"
+usage() {
+  mango_usage "rotate-pdf INPUT -o OUTPUT [-r 90|180|270]" "Rotate all pages in a PDF."
+}
+main() {
+  mango_parse_args usage "$@" || return 0
+  mango_require_input "$MANGO_INPUT"
+  [[ -n "$MANGO_OUTPUT" ]] || mango_die "Output path is required (-o)."
+  require_python_pkg pypdf pypdf
+  local -a args=("$MANGO_INPUT" -o "$(mango_abs_path "$MANGO_OUTPUT")")
+  [[ -n "$MANGO_ROTATE" ]] && args+=(-r "$MANGO_ROTATE")
+  mango_run_python "$MANGO_ROOT/tools/pdf/rotate.py" "${args[@]}"
+}
+main "$@"

@@ -121,12 +121,16 @@ _mango_run_conversion() {
   fi
 
   if ! mango_tool_deps_ok "$tool_id"; then
-    local hint
-    hint=$(mango_tool_deps_hint "$tool_id" 2>/dev/null || echo "Run: mango doctor")
     ui_message error "Missing dependency for ${label}."
     ui_box_open "Install"
-    ui_box_line "  ${hint}"
-    ui_box_line "  ${MANGO_DIM}Then run: mango doctor${MANGO_RESET}"
+    while IFS= read -r line; do
+      if [[ -z "$line" ]]; then
+        ui_box_line ""
+      else
+        ui_box_line "  ${line}"
+      fi
+    done < <(mango_tool_deps_install_guide "$tool_id")
+    ui_box_line "  ${MANGO_DIM}Verify: mango doctor${MANGO_RESET}"
     ui_box_close
     echo ""
     ui_pause

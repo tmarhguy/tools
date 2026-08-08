@@ -1,4 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$ROOT/tools/image/convert-image.sh" "$@"
+MANGO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/mango-cli.sh
+source "$MANGO_ROOT/lib/mango-cli.sh"
+usage() {
+  mango_usage "convert-image INPUT -o OUTPUT" \
+    "Convert between jpg, png, webp, gif, and bmp."
+}
+main() {
+  mango_parse_args usage "$@" || return 0
+  mango_require_input "$MANGO_INPUT"
+  [[ -n "$MANGO_OUTPUT" ]] || mango_die "Output path is required (-o)."
+  require_python_pkg Pillow Pillow
+  mango_run_python "$MANGO_ROOT/tools/image/convert.py" "$MANGO_INPUT" -o "$(mango_abs_path "$MANGO_OUTPUT")"
+}
+main "$@"

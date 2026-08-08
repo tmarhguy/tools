@@ -1,4 +1,59 @@
 #!/usr/bin/env bash
+# trim-media — trim video/audio with ffmpeg
+
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$ROOT/tools/video/trim-media.sh" "$@"
+
+MANGO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/mango-cli.sh
+source "$MANGO_ROOT/lib/mango-cli.sh"
+
+usage() {
+  mango_usage "trim-media INPUT -s START [-e END] [-o OUTPUT]" \
+    "Trim a video or audio file to a time range." \
+    "" \
+    "Options:" \
+    "  -s, --start   Start time (e.g. 0:05, 00:01:30)" \
+    "  -e, --end     End time (optional; trims to end if omitted)" \
+    "  -o, --output  Output path (default: input-trimmed.ext)" \
+    "  -h, --help    Show this help"
+}
+
+main() {
+  mango_parse_args usage "$@" || return 0
+  mango_require_input "$MANGO_INPUT"
+  local ffmpeg_bin
+  ffmpeg_bin=$(require_ffmpeg) || exit 1
+
+  [[ -n "$MANGO_START" ]] || mango_die "Start time is required (-s / --start)."
+
+  local ext out_ext
+  ext="${MANGO_INPUT##*.}"
+  out_ext=$(printf '%s' "$ext" | tr '[:upper:]' '[:lower:]')
+
+  if [[ -z "$MANGO_OUTPUT" ]]; then
+    local dir base
+    dir=$(dirname "$MANGO_INPUT")
+    base=$(basename "$MANGO_INPUT")
+    base="${base%.*}"
+    MANGO_OUTPUT="${dir}/${base}-trimmed.${out_ext}"
+  else
+    MANGO_OUTPUT="$(mango_abs_path "$MANGO_OUTPUT")"
+  fi
+
+  echo "Trimming → $(basename "$MANGO_OUTPUT")"
+  echo "  from ${MANGO_START}${MANGO_END:+ to $MANGO_END}"
+
+  local -a ffmpeg_args=(-hide_banner -loglevel warning -y -ss "$MANGO_START" -i "$MANGO_INPUT")
+  if [[ -n "$MANGO_END" ]]; then
+    ffmpeg_args+=(-to "$MANGO_END")
+  fi
+  ffmpeg_args+=(-c copy "$MANGO_OUTPUT")
+
+  "$ffmpeg_bin" "${ffmpeg_args[@]}"
+
+  local size
+  size=$(du -h "$MANGO_OUTPUT" 2>/dev/null | cut -f1 || echo "done")
+  echo "Saved: $MANGO_OUTPUT ($size)"
+}
+
+main "$@"

@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# Wrapper — Format JSON
-
 set -euo pipefail
-
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TOOL="$ROOT/tools/dev/format-json.sh"
-
-if [[ ! -x "$TOOL" ]]; then
-  echo "Error: format-json tool is not installed yet." >&2
-  exit 1
-fi
-
-exec "$TOOL" "$@"
+MANGO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/mango-cli.sh
+source "$MANGO_ROOT/lib/mango-cli.sh"
+usage() {
+  mango_usage "format-json INPUT [-o OUTPUT] [-m|--minify]" "Pretty-print or minify JSON."
+}
+main() {
+  mango_parse_args usage "$@" || return 0
+  mango_require_input "$MANGO_INPUT"
+  require_python
+  local -a args=("$MANGO_INPUT")
+  [[ -n "$MANGO_OUTPUT" ]] && args+=(-o "$(mango_abs_path "$MANGO_OUTPUT")")
+  [[ "$MANGO_MINIFY" -eq 1 ]] && args+=(-m)
+  mango_run_python "$MANGO_ROOT/tools/dev/format_json.py" "${args[@]}"
+}
+main "$@"

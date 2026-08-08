@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# Wrapper — CSV to JSON
-
 set -euo pipefail
-
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TOOL="$ROOT/tools/dev/csv-to-json.sh"
-
-if [[ ! -x "$TOOL" ]]; then
-  echo "Error: csv-to-json tool is not installed yet." >&2
-  exit 1
-fi
-
-exec "$TOOL" "$@"
+MANGO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/mango-cli.sh
+source "$MANGO_ROOT/lib/mango-cli.sh"
+usage() {
+  mango_usage "csv-to-json INPUT -o OUTPUT" "Convert a CSV file to a JSON array."
+}
+main() {
+  mango_parse_args usage "$@" || return 0
+  mango_require_input "$MANGO_INPUT"
+  [[ -n "$MANGO_OUTPUT" ]] || mango_die "Output path is required (-o)."
+  require_python
+  mango_run_python "$MANGO_ROOT/tools/dev/csv_to_json.py" "$MANGO_INPUT" -o "$(mango_abs_path "$MANGO_OUTPUT")"
+}
+main "$@"

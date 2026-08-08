@@ -1,4 +1,59 @@
 #!/usr/bin/env bash
+# extract-audio — pull audio track from video as MP3
+
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$ROOT/tools/video/extract-audio.sh" "$@"
+
+MANGO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/mango-cli.sh
+source "$MANGO_ROOT/lib/mango-cli.sh"
+
+usage() {
+  mango_usage "extract-audio INPUT [-o OUTPUT] [-f FORMAT]" \
+    "Extract the audio track from a video file." \
+    "" \
+    "Options:" \
+    "  -o, --output   Output path (default: same name with .mp3 or chosen format)" \
+    "  -f, --format   mp3 or wav (default: mp3)" \
+    "  -h, --help     Show this help"
+}
+
+main() {
+  mango_parse_args usage "$@" || return 0
+  mango_require_input "$MANGO_INPUT"
+  local ffmpeg_bin
+  ffmpeg_bin=$(require_ffmpeg) || exit 1
+
+  local fmt="${MANGO_FORMAT:-mp3}"
+  fmt=$(printf '%s' "$fmt" | tr '[:upper:]' '[:lower:]')
+
+  case "$fmt" in
+    mp3|wav) ;;
+    *) mango_die "Unsupported format: $fmt (use mp3 or wav)" ;;
+  esac
+
+  if [[ -z "$MANGO_OUTPUT" ]]; then
+    MANGO_OUTPUT="$(mango_default_output "$MANGO_INPUT" "$fmt")"
+  else
+    MANGO_OUTPUT="$(mango_abs_path "$MANGO_OUTPUT")"
+  fi
+
+  echo "Extracting → $(basename "$MANGO_OUTPUT")"
+
+  if [[ "$fmt" == "mp3" ]]; then
+    "$ffmpeg_bin" -hide_banner -loglevel warning -y \
+      -i "$MANGO_INPUT" \
+      -vn -acodec libmp3lame -q:a 2 \
+      "$MANGO_OUTPUT"
+  else
+    "$ffmpeg_bin" -hide_banner -loglevel warning -y \
+      -i "$MANGO_INPUT" \
+      -vn -acodec pcm_s16le \
+      "$MANGO_OUTPUT"
+  fi
+
+  local size
+  size=$(du -h "$MANGO_OUTPUT" 2>/dev/null | cut -f1 || echo "done")
+  echo "Saved: $MANGO_OUTPUT ($size)"
+}
+
+main "$@"

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Strip EXIF and metadata from images."""
+"""Strip EXIF and other metadata from images."""
+
 import argparse
 import os
 import sys
@@ -7,29 +8,34 @@ import sys
 from PIL import Image
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Strip image metadata")
-    parser.add_argument("input", help="Input image")
-    parser.add_argument("-o", "--output", help="Output (default: in-place)")
-    args = parser.parse_args()
-
-    if not os.path.isfile(args.input):
-        print(f"Error: not found: {args.input}", file=sys.stderr)
-        return 1
-
-    output = args.output or args.input
-    img = Image.open(args.input)
+def strip_metadata(path: str, output: str) -> None:
+    img = Image.open(path)
     data = list(img.getdata())
     clean = Image.new(img.mode, img.size)
     clean.putdata(data)
-    ext = os.path.splitext(output)[1].lower()
-    fmt = img.format or "PNG"
-    if ext in (".jpg", ".jpeg"):
-        fmt = "JPEG"
-    elif ext == ".webp":
-        fmt = "WEBP"
-    clean.save(output, format=fmt)
-    print(f"Wrote {output} (metadata removed)")
+    ext = os.path.splitext(output)[1].lower().lstrip(".")
+    if ext in ("jpg", "jpeg"):
+        if clean.mode in ("RGBA", "P"):
+            clean = clean.convert("RGB")
+        clean.save(output, "JPEG", quality=95, optimize=True)
+    else:
+        clean.save(output)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Strip EXIF/metadata from an image.")
+    parser.add_argument("input", help="Input image path")
+    parser.add_argument("-o", "--output", help="Output path (default: overwrite input)")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.input):
+        print(f"Error: file not found: {args.input}", file=sys.stderr)
+        return 1
+
+    output = args.output or args.input
+    os.makedirs(os.path.dirname(os.path.abspath(output)) or ".", exist_ok=True)
+    strip_metadata(args.input, output)
+    print(f"Saved: {output} (metadata removed)")
     return 0
 
 

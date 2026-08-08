@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# Wrapper — Base64 encode/decode
-
 set -euo pipefail
-
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TOOL="$ROOT/tools/dev/base64-tool.sh"
-
-if [[ ! -x "$TOOL" ]]; then
-  echo "Error: base64-tool is not installed yet." >&2
-  exit 1
-fi
-
-exec "$TOOL" "$@"
+MANGO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/mango-cli.sh
+source "$MANGO_ROOT/lib/mango-cli.sh"
+usage() {
+  mango_usage "base64-tool INPUT [-o OUTPUT] [-d|--decode]" "Base64 encode or decode a file."
+}
+main() {
+  mango_parse_args usage "$@" || return 0
+  mango_require_input "$MANGO_INPUT"
+  require_python
+  local -a args=("$MANGO_INPUT")
+  [[ -n "$MANGO_OUTPUT" ]] && args+=(-o "$(mango_abs_path "$MANGO_OUTPUT")")
+  [[ "$MANGO_DECODE" -eq 1 ]] && args+=(-d)
+  mango_run_python "$MANGO_ROOT/tools/dev/base64_tool.py" "${args[@]}"
+}
+main "$@"

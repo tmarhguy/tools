@@ -92,6 +92,19 @@ echo ""
 for spec in "ffmpeg:ffmpeg" "gs:ghostscript"; do
   cmd="${spec%%:*}"
   hint="${spec##*:}"
+  if [[ "$cmd" == "ffmpeg" ]]; then
+    if ff="$(mango_ffmpeg 2>/dev/null)"; then
+      if command -v ffmpeg &>/dev/null; then
+        check_ok "Command: ffmpeg ($(command -v ffmpeg))"
+      else
+        check_ok "ffmpeg (bundled): $ff"
+      fi
+    else
+      check_warn "ffmpeg not found (needed for video tools)"
+      echo "     → $(mango_install_hint ffmpeg)"
+    fi
+    continue
+  fi
   if command -v "$cmd" &>/dev/null; then
     check_ok "Command: $cmd ($(command -v "$cmd"))"
   else
