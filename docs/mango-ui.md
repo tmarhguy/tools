@@ -121,6 +121,7 @@ Every tool is also available directly — useful for scripts and automation:
 
 ```bash
 ./bin/to_gif video.mp4 -o out.gif
+./bin/to_gif video.mp4 -o out.gif -w 720 --fps 15 -c 192 -l 38
 ./bin/merge-pdf a.pdf b.pdf -o merged.pdf
 ./bin/format-json data.json -o pretty.json
 ./bin/compress-image photo.jpg -o photo-small.jpg

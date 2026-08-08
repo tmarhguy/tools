@@ -35,6 +35,7 @@ Get Mango running locally in a few minutes.
 | **Python 3.9+** | PDF, image, and developer tools |
 | **pip + venv** | Installing Python packages in an isolated environment |
 | **ffmpeg** | Video → GIF, extract audio, trim media |
+| **gifsicle** *(optional)* | Video → GIF optimization (auto-built into `.tools/` on first run if missing) |
 | **Ghostscript** *(optional)* | PDF compression only |
 
 Developer tools (JSON, CSV, base64, hashes) need **Python only** — no extra packages beyond the stdlib.
@@ -206,6 +207,7 @@ You can also run tools directly from the repo root:
 ```bash
 ./mango
 ./bin/to_gif video.mp4 -o out.gif
+./bin/to_gif video.mp4 -o out.gif -w 720 -c 192 -l 38
 ```
 
 ---
@@ -246,7 +248,7 @@ All other shipped tools work without Ghostscript.
 
 | Category | Tools | Dependencies |
 |----------|-------|----------------|
-| **Video & Audio** | GIF, extract audio, trim | `ffmpeg` |
+| **Video & Audio** | GIF, extract audio, trim | `ffmpeg` (+ `gifsicle` for GIF optimization) |
 | **Image** | compress, convert, strip EXIF | Python + `Pillow` |
 | **PDF** | merge, split, rotate, jpg→pdf | Python + `pypdf` |
 | **PDF** | PDF → Word | Python + `pdf2docx` |

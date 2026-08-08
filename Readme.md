@@ -68,7 +68,7 @@ This project is currently expanding into a comprehensive suite of offline tools 
 **Setup:** See [docs/install.md](docs/install.md) and run `mango doctor` to verify dependencies.
 
 ### Video & Audio (`tools/video/` & `tools/audio/`)
-- [x] **video-to-gif**: Converts a local video file into a high-quality GIF via ffmpeg. (`bin/to_gif`)
+- [x] **video-to-gif**: Two-pass ffmpeg palette conversion + gifsicle optimization for sharp, compact GIFs. (`bin/to_gif`) — `ffmpeg` required; `gifsicle` optional (auto-built on first run). Flags: `-w`, `--fps`, `-c` colors, `-l` lossy.
 - [x] **extract-audio**: Pull MP3/WAV tracks from video files. (`bin/extract-audio`)
 - [x] **trim-media**: Trim media duration with ffmpeg. (`bin/trim-media`)
 - [x] **compress-video**: Optimize video files for web sharing. (`bin/compress-video`)
