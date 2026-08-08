@@ -193,3 +193,29 @@ mango_tool_deps_hint() {
     *) return 1 ;;
   esac
 }
+
+# Multi-line install steps for the Mango UI.
+mango_tool_deps_install_guide() {
+  local tool_id="$1"
+  case "$tool_id" in
+    video-to-gif|extract-audio|trim-media)
+      if command -v brew &>/dev/null; then
+        mango_tool_deps_hint "$tool_id"
+        return 0
+      fi
+      if [[ "$(mango_os)" == "macos" ]]; then
+        printf '%s\n' \
+          "./setup.sh" \
+          "  installs bundled ffmpeg in .venv (no Homebrew needed)" \
+          "" \
+          "Or install Homebrew first: https://brew.sh" \
+          "  then: brew install ffmpeg"
+        return 0
+      fi
+      mango_tool_deps_hint "$tool_id"
+      ;;
+    *)
+      mango_tool_deps_hint "$tool_id" 2>/dev/null || printf '%s\n' "Run: mango doctor"
+      ;;
+  esac
+}
