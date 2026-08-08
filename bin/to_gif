@@ -1,15 +1,144 @@
 #!/usr/bin/env bash
-# Wrapper — Video to GIF
+# to_gif — convert video to high-quality GIF via ffmpeg + gifsicle
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TOOL="$ROOT/tools/video/to_gif.sh"
+MANGO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/mango-cli.sh
+source "$MANGO_ROOT/lib/mango-cli.sh"
 
-if [[ ! -x "$TOOL" ]]; then
-  echo "Error: Video to GIF tool is not installed yet." >&2
-  echo "Expected script: $TOOL" >&2
-  exit 1
-fi
+FPS=15
+MAX_WIDTH=480
+COLORS=192
+LOSSY=38
 
-exec "$TOOL" "$@"
+usage() {
+  mango_usage "to_gif INPUT [-o OUTPUT] [-w WIDTH] [--fps FPS] [-c COLORS] [-l LOSSY]" \
+    "Convert a video file to an animated GIF." \
+    "" \
+    "Options:" \
+    "  -o, --output   Output GIF path (default: same name with .gif)" \
+    "  -w, --width    Max width in pixels (default: 480)" \
+    "      --fps, -f  Frames per second (default: 15)" \
+    "  -c, --colors   Palette size 2–256 (default: 192)" \
+    "  -l, --lossy    gifsicle lossy level 0–200 (default: 38; 0 = lossless)" \
+    "  -h, --help     Show this help"
+}
+
+mango_gifsicle() {
+  if command -v gifsicle &>/dev/null; then
+    command -v gifsicle
+    return 0
+  fi
+  if [[ -x "$MANGO_ROOT/.tools/gifsicle" ]]; then
+    printf '%s' "$MANGO_ROOT/.tools/gifsicle"
+    return 0
+  fi
+  return 1
+}
+
+ensure_gifsicle() {
+  local bin
+  bin=$(mango_gifsicle) && {
+    printf '%s' "$bin"
+    return 0
+  }
+
+  echo "→ gifsicle not found; building once into .tools/…"
+  local tools="$MANGO_ROOT/.tools"
+  mkdir -p "$tools"
+  local ver="1.95"
+  local tarball="$tools/gifsicle-${ver}.tar.gz"
+  local src="$tools/gifsicle-${ver}"
+  curl -fsSL "https://www.lcdf.org/gifsicle/gifsicle-${ver}.tar.gz" -o "$tarball"
+  tar -xzf "$tarball" -C "$tools"
+  (
+    cd "$src"
+    ./configure --prefix="$tools/gifsicle-prefix" --disable-gifview --disable-gifdiff >/dev/null
+    make -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 2)" >/dev/null
+    make install >/dev/null
+  )
+  cp "$tools/gifsicle-prefix/bin/gifsicle" "$tools/gifsicle"
+  chmod +x "$tools/gifsicle"
+  rm -rf "$src" "$tarball" "$tools/gifsicle-prefix"
+  printf '%s' "$tools/gifsicle"
+}
+
+main() {
+  local args=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --fps|-f)
+        FPS="$2"
+        shift 2
+        ;;
+      -w|--width)
+        MAX_WIDTH="$2"
+        shift 2
+        ;;
+      -c|--colors)
+        COLORS="$2"
+        shift 2
+        ;;
+      -l|--lossy)
+        LOSSY="$2"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        ;;
+      *)
+        args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  mango_parse_args usage "${args[@]}" || return 0
+  mango_require_input "$MANGO_INPUT"
+  local ffmpeg_bin gifsicle_bin
+  ffmpeg_bin=$(require_ffmpeg) || exit 1
+
+  if [[ -z "$MANGO_OUTPUT" ]]; then
+    MANGO_OUTPUT="$(mango_default_output "$MANGO_INPUT" gif)"
+  else
+    MANGO_OUTPUT="$(mango_abs_path "$MANGO_OUTPUT")"
+  fi
+
+  gifsicle_bin=$(ensure_gifsicle)
+
+  local tmpdir palette base_gif filters
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/to_gif.XXXXXX")"
+  trap 'rm -rf "$tmpdir"' EXIT
+  palette="$tmpdir/palette.png"
+  base_gif="$tmpdir/base.gif"
+  filters="fps=${FPS},scale=${MAX_WIDTH}:-1:flags=lanczos"
+
+  echo "→ encoding $(basename "$MANGO_INPUT")  (${MAX_WIDTH}px @ ${FPS}fps, ${COLORS} colors, lossy=${LOSSY})"
+
+  "$ffmpeg_bin" -y -hide_banner -loglevel error \
+    -i "$MANGO_INPUT" \
+    -vf "${filters},palettegen=stats_mode=diff:max_colors=${COLORS}" \
+    "$palette"
+
+  "$ffmpeg_bin" -y -hide_banner -loglevel error \
+    -i "$MANGO_INPUT" -i "$palette" \
+    -lavfi "${filters}[x];[x][1:v]paletteuse=dither=none:diff_mode=rectangle" \
+    "$base_gif"
+
+  if [[ "$LOSSY" -eq 0 ]]; then
+    "$gifsicle_bin" -O3 --careful "$base_gif" -o "$MANGO_OUTPUT"
+  else
+    "$gifsicle_bin" -O3 --careful --lossy="$LOSSY" "$base_gif" -o "$MANGO_OUTPUT"
+  fi
+
+  rm -rf "$tmpdir"
+  trap - EXIT
+
+  local in_size out_size
+  in_size="$(du -h "$MANGO_INPUT" | awk '{print $1}')"
+  out_size="$(du -h "$MANGO_OUTPUT" | awk '{print $1}')"
+  echo "✓ $MANGO_OUTPUT  (${in_size} → ${out_size})"
+}
+
+main "$@"
