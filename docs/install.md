@@ -47,7 +47,7 @@ Developer tools (JSON, CSV, base64, hashes) need **Python only** — no extra pa
 **One-liner** (no manual clone — installs to `~/.local/share/mango`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tmarhguy/tools/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tmarhguy/tools/main/setup.sh | bash -s -- --yes --link
 ```
 
 **From a clone:**
@@ -58,7 +58,7 @@ cd tools
 ./setup.sh
 ```
 
-The setup script creates the venv, installs Python packages, makes scripts executable, optionally installs `ffmpeg`, runs `mango doctor` on first install, and can symlink `mango` to `~/.local/bin`. **Re-runs skip pip and doctor when nothing changed** — typically under half a second.
+The setup script creates the venv, installs Python packages, makes scripts executable, optionally installs `ffmpeg`, runs `mango doctor` on first install, and can install **all Mango commands** (`mango`, `format-json`, `merge-pdf`, etc.) to `~/.local/bin` with optional PATH setup. **Re-runs skip pip and doctor when nothing changed** — typically under half a second.
 
 Non-interactive: `./setup.sh --yes`
 
@@ -77,7 +77,7 @@ Non-interactive: `./setup.sh --yes`
 | **Force dependency check** | `./setup.sh --doctor` |
 | **Pull latest + setup** | `./setup.sh --update` |
 | **Skip ffmpeg prompt** | `./setup.sh --no-ffmpeg` |
-| **Add to PATH** | `./setup.sh --link` |
+| **Add to PATH** | `./setup.sh --link` (installs all commands to `~/.local/bin`) |
 
 **Install location:** `~/.local/share/mango` (override with `MANGO_INSTALL_DIR`)
 
@@ -138,22 +138,22 @@ winget install Artifex.GhostScript # Windows
 ```
 
 <p align="center">
-  <img src="../media/full_ui_start_page.png" alt="Mango full start page" width="800">
+  <img src="../media/main_menu.png" alt="Mango main menu" width="800">
 </p>
 
 <table>
   <tr>
     <td align="center" width="50%">
-      <strong>Main menu</strong><br>
-      <sub>Pick a category</sub>
+      <strong>Folder browser</strong><br>
+      <sub>Matching folders and files only</sub>
       <br><br>
-      <img src="../media/main_menu.png" alt="Main menu" width="380">
+      <img src="../media/dir_navig.png" alt="Mango folder browser" width="380">
     </td>
     <td align="center" width="50%">
-      <strong>Enter choice</strong><br>
-      <sub>Type <code>1</code>–<code>6</code></sub>
+      <strong>Conversion complete</strong><br>
+      <sub>Size saved and output path</sub>
       <br><br>
-      <img src="../media/enter_choice.png" alt="Choice prompt" width="380">
+      <img src="../media/success_image_compress.png" alt="Mango success screen" width="380">
     </td>
   </tr>
 </table>
@@ -182,25 +182,53 @@ Example output when healthy:
 
 ### Verify all tools
 
-Run the smoke test suite — exercises every registered tool (skips video tests if `ffmpeg` is not installed):
+Run the full test suite (lint, unit tests, browse logic, and smoke tests):
+
+```bash
+./tests/run.sh
+```
+
+Faster check without end-to-end smoke:
+
+```bash
+./tests/run.sh --quick
+```
+
+Legacy smoke-only:
 
 ```bash
 ./tests/smoke.sh
 ```
 
-You should see `All smoke tests passed (21 tools).`
+You should see `All requested tests passed.` Details: [tests/README.md](../tests/README.md)
 
 ---
 
 ## Add Mango to your PATH
 
-To run `mango`, `to_gif`, and other tools from any directory:
+After setup, Mango tools can run from **any directory** — like `python3` or `git`.
+
+### Recommended: global install via setup
+
+```bash
+./setup.sh --link --yes
+```
+
+This installs every tool to `~/.local/bin` and adds that directory to your shell config (`.zshrc`, `.bashrc`, etc.). Open a new terminal, then:
+
+```bash
+mango
+format-json data.json
+merge-pdf a.pdf b.pdf
+```
+
+### Manual PATH (from a clone)
 
 ```bash
 export PATH="$PATH:/path/to/tools/bin"
 ```
 
-Add that line to your shell config (`.zshrc`, `.bashrc`, etc.) to make it permanent.
+Add that line to your shell config to make it permanent.
 
 You can also run tools directly from the repo root:
 
@@ -208,6 +236,13 @@ You can also run tools directly from the repo root:
 ./mango
 ./bin/to_gif video.mp4 -o out.gif
 ./bin/to_gif video.mp4 -o out.gif -w 720 -c 192 -l 38
+```
+
+### Skip global install
+
+```bash
+./setup.sh --no-link          # don't install to ~/.local/bin
+./setup.sh --link --no-path   # install commands but don't edit shell config
 ```
 
 ---
