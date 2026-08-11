@@ -22,6 +22,10 @@ Captured in [`media/`](../media/):
 
 ![Title screen](../media/title_screen_mango.png)
 
-![Full start page](../media/full_ui_start_page.png)
+![Main menu](../media/main_menu.png)
+
+![Folder browser](../media/dir_navig.png)
+
+![Compress image flow](../media/img_comp_window.png)
 
 See also [docs/install.md](../docs/install.md) for setup and [docs/mango-ui.md](../docs/mango-ui.md) for the full interface guide.
