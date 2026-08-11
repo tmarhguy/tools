@@ -645,6 +645,291 @@ _mango_read_all_into_array() {
   fi
 }
 
+_mango_short_path() {
+  local p="$1" home="$HOME"
+  if [[ "$p" == "$home" ]]; then
+    printf '~'
+    return 0
+  fi
+  if [[ "$p" == "$home/"* ]]; then
+    printf '~%s' "${p#$home}"
+    return 0
+  fi
+  printf '%s' "$p"
+}
+
+_mango_dir_has_matching_files() {
+  local dir="$1"
+  shift
+  local -a exts=("$@")
+  local ext
+
+  if _mango_exts_is_any "${exts[@]}"; then
+    [[ -n "$(find "$dir" -type f ! -name '.*' -print -quit 2>/dev/null)" ]]
+    return $?
+  fi
+
+  for ext in "${exts[@]}"; do
+    ext=$(printf '%s' "$ext" | tr '[:upper:]' '[:lower:]')
+    if [[ -n "$(find "$dir" -type f -iname "*.${ext}" ! -name '.*' -print -quit 2>/dev/null)" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+_mango_browse_list_items() {
+  local varname="$1"
+  local current="$2"
+  local root="$3"
+  shift 3
+  local -a exts=("$@")
+  local -a _items=() dirs=() files=()
+  local d f name ext
+
+  if [[ "$current" != "$root" ]]; then
+    _items+=("dir|..")
+  fi
+
+  shopt -s nullglob
+  for d in "$current"/*/; do
+    [[ -d "$d" ]] || continue
+    name=$(basename "$d")
+    [[ "$name" == .* ]] && continue
+    if _mango_dir_has_matching_files "$d" "${exts[@]}"; then
+      dirs+=("$name")
+    fi
+  done
+  shopt -u nullglob
+
+  if ((${#dirs[@]} > 0)); then
+    local IFS=$'\n'
+    dirs=($(printf '%s\n' "${dirs[@]}" | LC_ALL=C sort -f))
+    for name in "${dirs[@]}"; do
+      _items+=("dir|${name}")
+    done
+  fi
+
+  if [[ ${#exts[@]} -eq 0 ]] || _mango_exts_is_any "${exts[@]}"; then
+    shopt -s nullglob
+    for f in "$current"/*; do
+      [[ -f "$f" ]] || continue
+      name=$(basename "$f")
+      [[ "$name" == .* ]] && continue
+      files+=("$name")
+    done
+    shopt -u nullglob
+  else
+    shopt -s nullglob nocaseglob
+    for ext in "${exts[@]}"; do
+      ext=$(printf '%s' "$ext" | tr '[:upper:]' '[:lower:]')
+      for f in "$current"/*."${ext}"; do
+        [[ -f "$f" ]] || continue
+        files+=("$(basename "$f")")
+      done
+    done
+    shopt -u nullglob nocaseglob
+  fi
+
+  if ((${#files[@]} > 0)); then
+    local IFS=$'\n'
+    files=($(printf '%s\n' "${files[@]}" | LC_ALL=C sort -fu))
+    for name in "${files[@]}"; do
+      _items+=("file|${name}")
+    done
+  fi
+
+  if ((${#_items[@]} > 0)); then
+    eval "$varname=(\"\${_items[@]}\")"
+  else
+    eval "$varname=()"
+  fi
+}
+
+_MANGO_BROWSE_DIR=""
+
+_mango_browse_item_content() {
+  local index="$1"
+  local selected="$2"
+  local entry="$3"
+  local browse_dir="$4"
+  local typ="${entry%%|*}"
+  local name="${entry#*|}"
+  local marker text size
+
+  if [[ "$index" -eq "$selected" ]]; then
+    marker="${MANGO_CYAN}${MANGO_BOLD}❯${MANGO_RESET}"
+  else
+    marker=" "
+  fi
+
+  case "$typ" in
+    dir)
+      if [[ "$name" == ".." ]]; then
+        text="${MANGO_YELLOW}../${MANGO_RESET}  ${MANGO_DIM}(parent)${MANGO_RESET}"
+      else
+        text="${MANGO_CYAN}${name}/${MANGO_RESET}  ${MANGO_DIM}folder${MANGO_RESET}"
+      fi
+      ;;
+    file)
+      size=$(_mango_file_size "$browse_dir/$name")
+      text="${MANGO_WHITE}${name}${MANGO_RESET}  ${MANGO_DIM}${size}${MANGO_RESET}"
+      ;;
+    *)
+      text="${MANGO_DIM}${entry}${MANGO_RESET}"
+      ;;
+  esac
+  printf '%s' "  ${marker} ${text}"
+}
+
+_mango_browse_item_line() {
+  local index="$1"
+  local selected="$2"
+  local entry="$3"
+  local browse_dir="$4"
+  _mango_box_line_str "$(_mango_browse_item_content "$index" "$selected" "$entry" "$browse_dir")"
+}
+
+_mango_browse_picker_draw_full() {
+  local title="$1"
+  local browse_dir="$2"
+  local selected="$3"
+  shift 3
+  local -a items=("$@")
+  local i=0 row_start
+
+  _MANGO_ITEM_ROWS=()
+  _mango_tui_home
+  _mango_out ""
+  ui_box_open "$title"
+  if ((${#items[@]} == 0)); then
+    ui_box_line "  ${MANGO_DIM}No matching files under this folder.${MANGO_RESET}"
+  else
+    for i in "${!items[@]}"; do
+      row_start=$_MANGO_TUI_ROW
+      ui_box_line "$(_mango_browse_item_content "$i" "$selected" "${items[$i]}" "$browse_dir")"
+      _MANGO_ITEM_ROWS+=("$row_start")
+    done
+  fi
+  ui_box_rule
+  if ((${#items[@]} == 0)); then
+    ui_box_line "  ${MANGO_DIM}P type path · Q go back${MANGO_RESET}"
+  else
+    ui_box_line "  ${MANGO_DIM}↑↓ navigate · Enter open/select · P type path · Q go back${MANGO_RESET}"
+  fi
+  ui_box_close
+  _mango_out ""
+}
+
+# Returns 0 on file/dir entry select, 2 to type a path, 3 to go back.
+ui_arrow_select_browse() {
+  local varname="$1"
+  local title="$2"
+  local browse_dir="$3"
+  shift 3
+  local -a items=("$@")
+  local count=${#items[@]}
+  local selected=0 key old
+  local -a item_rows=()
+
+  _MANGO_BROWSE_DIR="$browse_dir"
+  _mango_tui_enter
+
+  _mango_browse_picker_draw_full "$title" "$browse_dir" "$selected" "${items[@]+"${items[@]}"}"
+  item_rows=("${_MANGO_ITEM_ROWS[@]}")
+
+  while true; do
+    key=$(_mango_read_nav_key)
+
+    case "$key" in
+      up)
+        [[ "$count" -gt 0 ]] || continue
+        old=$selected
+        selected=$(( (selected - 1 + count) % count ))
+        if [[ "$old" != "$selected" ]]; then
+          _mango_redraw_at "${item_rows[$old]}" "$(_mango_browse_item_line "$old" "$selected" "${items[$old]}" "$browse_dir")"
+          _mango_redraw_at "${item_rows[$selected]}" "$(_mango_browse_item_line "$selected" "$selected" "${items[$selected]}" "$browse_dir")"
+        fi
+        ;;
+      down)
+        [[ "$count" -gt 0 ]] || continue
+        old=$selected
+        selected=$(( (selected + 1) % count ))
+        if [[ "$old" != "$selected" ]]; then
+          _mango_redraw_at "${item_rows[$old]}" "$(_mango_browse_item_line "$old" "$selected" "${items[$old]}" "$browse_dir")"
+          _mango_redraw_at "${item_rows[$selected]}" "$(_mango_browse_item_line "$selected" "$selected" "${items[$selected]}" "$browse_dir")"
+        fi
+        ;;
+      enter|right)
+        [[ "$count" -gt 0 ]] || continue
+        _mango_tui_leave
+        printf -v "$varname" '%s' "${items[$selected]}"
+        return 0
+        ;;
+      p|P)
+        _mango_tui_leave
+        return 2
+        ;;
+      q|Q|esc)
+        _mango_tui_leave
+        return 3
+        ;;
+    esac
+  done
+}
+
+# Returns 0 with full file path, 1 cancel, 2 type path manually.
+ui_browse_for_file() {
+  local varname="$1"
+  shift
+  local -a allowed_exts=("$@")
+  local browse_dir browse_root filter_label title
+  local -a items=()
+  local _sel rc typ name full
+
+  browse_dir=$(_mango_expand_path "$(pwd)")
+  browse_root="$browse_dir"
+
+  while true; do
+    _mango_browse_list_items items "$browse_dir" "$browse_root" "${allowed_exts[@]}"
+
+    if [[ ${#allowed_exts[@]} -gt 0 ]] && ! _mango_exts_is_any "${allowed_exts[@]}"; then
+      filter_label=$(_mango_format_ext_label "${allowed_exts[@]}")
+    else
+      filter_label="any file"
+    fi
+    title="Select — ${filter_label} · $(_mango_short_path "$browse_dir")"
+
+    ui_arrow_select_browse _sel "$title" "$browse_dir" "${items[@]+"${items[@]}"}"
+    rc=$?
+
+    if [[ "$rc" -eq 3 ]]; then
+      return 1
+    fi
+    if [[ "$rc" -eq 2 ]]; then
+      return 2
+    fi
+
+    typ="${_sel%%|*}"
+    name="${_sel#*|}"
+
+    case "$typ" in
+      dir)
+        if [[ "$name" == ".." ]]; then
+          browse_dir=$(_mango_expand_path "$browse_dir/..")
+        else
+          browse_dir=$(_mango_expand_path "$browse_dir/$name")
+        fi
+        ;;
+      file)
+        full=$(_mango_expand_path "$browse_dir/$name")
+        printf -v "$varname" '%s' "$full"
+        return 0
+        ;;
+    esac
+  done
+}
+
 _mango_read_nav_key() {
   local k k2 k3
 
@@ -807,30 +1092,13 @@ ui_prompt_file() {
   local -a allowed_exts=("$@")
 
   while true; do
-    local -a found=()
-    local filter_label title picked rc path
+    local rc path
 
-    if [[ ${#allowed_exts[@]} -gt 0 ]]; then
-      if _mango_exts_is_any "${allowed_exts[@]}"; then
-        _mango_read_all_into_array found
-        filter_label="any file"
-      else
-        _mango_read_into_array found "${allowed_exts[@]}"
-        filter_label=$(_mango_format_ext_label "${allowed_exts[@]}")
-      fi
-      title="Select input — ${filter_label} in $(pwd)"
-    else
-      _mango_read_all_into_array found
-      title="Select file in $(pwd)"
-    fi
-
-    ui_arrow_select_file picked "$title" "${found[@]}"
+    ui_browse_for_file "$varname" "${allowed_exts[@]}"
     rc=$?
     if [[ "$rc" -eq 0 ]]; then
-      path=$(_mango_expand_path "$picked")
-      printf -v "$varname" '%s' "$path"
       return 0
-    elif [[ "$rc" -eq 3 ]]; then
+    elif [[ "$rc" -eq 1 ]]; then
       return 1
     fi
 
