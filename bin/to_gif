@@ -133,9 +133,15 @@ main() {
 
   if [[ -n "$gifsicle_bin" ]]; then
     if [[ "$LOSSY" -eq 0 ]]; then
-      "$gifsicle_bin" -O3 --careful "$base_gif" -o "$MANGO_OUTPUT"
-    else
-      "$gifsicle_bin" -O3 --careful --lossy="$LOSSY" "$base_gif" -o "$MANGO_OUTPUT"
+      if ! "$gifsicle_bin" -O3 --careful "$base_gif" -o "$MANGO_OUTPUT"; then
+        echo "→ gifsicle optimization failed; using ffmpeg GIF" >&2
+        cp "$base_gif" "$MANGO_OUTPUT"
+      fi
+    elif ! "$gifsicle_bin" -O3 --careful --lossy="$LOSSY" "$base_gif" -o "$MANGO_OUTPUT"; then
+      if ! "$gifsicle_bin" -O3 --careful --lossy "$LOSSY" "$base_gif" -o "$MANGO_OUTPUT"; then
+        echo "→ gifsicle optimization failed; using ffmpeg GIF" >&2
+        cp "$base_gif" "$MANGO_OUTPUT"
+      fi
     fi
   else
     echo "→ gifsicle not available; saving ffmpeg GIF without extra optimization" >&2
