@@ -17,7 +17,7 @@ mango_parse_args usage "$@"
 
 [[ -z "$MANGO_INPUT" ]] && usage
 mango_require_input "$MANGO_INPUT"
-require_cmd ffmpeg ffmpeg || exit 1
+ffmpeg_bin=$(require_ffmpeg) || exit 1
 
 CRF="${MANGO_QUALITY:-28}"
 PRESET="${MANGO_PRESET:-medium}"
@@ -29,14 +29,14 @@ esac
 if [[ -n "$MANGO_OUTPUT" ]]; then
   OUTPUT="$(mango_abs_path "$MANGO_OUTPUT")"
 else
-  OUTPUT="$(mango_abs_path "$(mango_default_output "$MANGO_INPUT" mp4")")"
+  OUTPUT="$(mango_abs_path "$(mango_default_output "$MANGO_INPUT" mp4)")"
   OUTPUT="${OUTPUT%.*}_compressed.mp4"
 fi
 
 before=$(stat -f%z "$MANGO_INPUT" 2>/dev/null || stat -c%s "$MANGO_INPUT")
 echo "Compressing $(basename "$MANGO_INPUT") → $(basename "$OUTPUT") (CRF ${CRF}, preset ${PRESET})…"
 
-ffmpeg -hide_banner -loglevel error -y \
+"$ffmpeg_bin" -hide_banner -loglevel error -y \
   -i "$MANGO_INPUT" \
   -c:v libx264 -crf "$CRF" -preset "$PRESET" \
   -c:a aac -b:a 128k \

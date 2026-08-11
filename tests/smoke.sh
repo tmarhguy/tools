@@ -7,6 +7,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FIX="$ROOT/tests/fixtures"
 PY="$ROOT/.venv/bin/python"
 command -v "$PY" &>/dev/null || PY=python3
+# shellcheck source=../lib/mango-deps.sh
+source "$ROOT/lib/mango-deps.sh"
 FAIL=0
 
 pass() { echo "  ok: $1"; }
@@ -161,11 +163,15 @@ else
   fail "pdf-to-jpg"
 fi
 
-if "$ROOT/bin/compress-pdf" "$FIX/a.pdf" -o "$FIX/compressed.pdf" 2>/dev/null \
-  && [[ -f "$FIX/compressed.pdf" ]]; then
-  pass "compress-pdf"
+if command -v gs &>/dev/null; then
+  if "$ROOT/bin/compress-pdf" "$FIX/a.pdf" -o "$FIX/compressed.pdf" 2>/dev/null \
+    && [[ -f "$FIX/compressed.pdf" ]]; then
+    pass "compress-pdf"
+  else
+    fail "compress-pdf"
+  fi
 else
-  fail "compress-pdf"
+  skip "compress-pdf (ghostscript not installed)"
 fi
 
 if "$ROOT/bin/protect-pdf" "$FIX/a.pdf" -o "$FIX/protected.pdf" -p "test123" 2>/dev/null \
@@ -198,35 +204,42 @@ fi
 
 # ── Video tools (require ffmpeg) ────────────────────────────────────────────────
 
+FFMPEG=""
 if command -v ffmpeg &>/dev/null; then
+  FFMPEG=ffmpeg
+elif FFMPEG=$(mango_ffmpeg 2>/dev/null); then
+  :
+fi
+
+if [[ -n "$FFMPEG" ]]; then
   TEST_VIDEO="$FIX/sample.mp4"
-  if [[ ! -f "$TEST_VIDEO" ]]; then
-    ffmpeg -hide_banner -loglevel error -y \
-      -f lavfi -i "color=c=blue:s=64x64:d=1" -pix_fmt yuv420p "$TEST_VIDEO" 2>/dev/null || true
-  fi
+  "$FFMPEG" -hide_banner -loglevel error -y \
+    -f lavfi -i "smptebars=size=64x64:rate=10:duration=1" \
+    -f lavfi -i "sine=frequency=440:duration=1:sample_rate=44100" \
+    -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest "$TEST_VIDEO" 2>/dev/null || true
 
   if [[ -f "$TEST_VIDEO" ]]; then
-    if "$ROOT/bin/to_gif" "$TEST_VIDEO" -o "$FIX/sample.gif" 2>/dev/null && [[ -f "$FIX/sample.gif" ]]; then
+    if "$ROOT/bin/to_gif" "$TEST_VIDEO" -o "$FIX/sample.gif" && [[ -s "$FIX/sample.gif" ]]; then
       pass "to_gif"
     else
       fail "to_gif"
     fi
 
-    if "$ROOT/bin/extract-audio" "$TEST_VIDEO" -o "$FIX/sample.mp3" 2>/dev/null && [[ -f "$FIX/sample.mp3" ]]; then
+    if "$ROOT/bin/extract-audio" "$TEST_VIDEO" -o "$FIX/sample.mp3" && [[ -s "$FIX/sample.mp3" ]]; then
       pass "extract-audio"
     else
       fail "extract-audio"
     fi
 
-    if "$ROOT/bin/trim-media" "$TEST_VIDEO" -o "$FIX/trimmed.mp4" --start 0 --end 0.5 2>/dev/null \
-      && [[ -f "$FIX/trimmed.mp4" ]]; then
+    if "$ROOT/bin/trim-media" "$TEST_VIDEO" -o "$FIX/trimmed.mp4" --start 0 --end 0.5 \
+      && [[ -s "$FIX/trimmed.mp4" ]]; then
       pass "trim-media"
     else
       fail "trim-media"
     fi
 
-    if "$ROOT/bin/compress-video" "$TEST_VIDEO" -o "$FIX/video_compressed.mp4" -q 32 2>/dev/null \
-      && [[ -f "$FIX/video_compressed.mp4" ]]; then
+    if "$ROOT/bin/compress-video" "$TEST_VIDEO" -o "$FIX/video_compressed.mp4" -q 32 \
+      && [[ -s "$FIX/video_compressed.mp4" ]]; then
       pass "compress-video"
     else
       fail "compress-video"

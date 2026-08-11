@@ -28,7 +28,7 @@ def main() -> int:
             print(f"Error: invalid base64 input: {exc}", file=sys.stderr)
             return 1
     else:
-        out = base64.encodebytes(data)
+        out = base64.standard_b64encode(data)
 
     if args.output:
         os.makedirs(os.path.dirname(os.path.abspath(args.output)) or ".", exist_ok=True)

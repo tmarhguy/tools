@@ -8,10 +8,27 @@ usage() {
     "Merge PDF files. With one input, merges all PDFs in that folder."
 }
 main() {
-  mango_parse_args usage "$@" || return 0
-  mango_require_input "$MANGO_INPUT"
-  [[ -n "$MANGO_OUTPUT" ]] || mango_die "Output path is required (-o)."
+  local -a inputs=()
+  local output=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -o|--output) output="$2"; shift 2 ;;
+      -h|--help) usage ;;
+      -*) mango_die "Unknown option: $1" ;;
+      *) inputs+=("$1"); shift ;;
+    esac
+  done
+
+  [[ ${#inputs[@]} -gt 0 ]] || usage
+  [[ -n "$output" ]] || mango_die "Output path is required (-o)."
+
+  local path
+  for path in "${inputs[@]}"; do
+    mango_require_input "$path"
+  done
+
   require_python_pkg pypdf pypdf
-  mango_run_python "$MANGO_ROOT/tools/pdf/merge.py" "$MANGO_INPUT" -o "$(mango_abs_path "$MANGO_OUTPUT")"
+  mango_run_python "$MANGO_ROOT/tools/pdf/merge.py" "${inputs[@]}" -o "$(mango_abs_path "$output")"
 }
 main "$@"

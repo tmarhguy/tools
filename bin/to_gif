@@ -105,7 +105,12 @@ main() {
     MANGO_OUTPUT="$(mango_abs_path "$MANGO_OUTPUT")"
   fi
 
-  gifsicle_bin=$(ensure_gifsicle)
+  gifsicle_bin=""
+  if gifsicle_bin=$(mango_gifsicle); then
+    :
+  elif [[ "${CI:-}" != "true" ]] && command -v make &>/dev/null && command -v gcc &>/dev/null; then
+    gifsicle_bin=$(ensure_gifsicle)
+  fi
 
   local tmpdir palette base_gif filters
   tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/to_gif.XXXXXX")"
@@ -126,10 +131,21 @@ main() {
     -lavfi "${filters}[x];[x][1:v]paletteuse=dither=none:diff_mode=rectangle" \
     "$base_gif"
 
-  if [[ "$LOSSY" -eq 0 ]]; then
-    "$gifsicle_bin" -O3 --careful "$base_gif" -o "$MANGO_OUTPUT"
+  if [[ -n "$gifsicle_bin" ]]; then
+    if [[ "$LOSSY" -eq 0 ]]; then
+      if ! "$gifsicle_bin" -O3 --careful "$base_gif" -o "$MANGO_OUTPUT"; then
+        echo "→ gifsicle optimization failed; using ffmpeg GIF" >&2
+        cp "$base_gif" "$MANGO_OUTPUT"
+      fi
+    elif ! "$gifsicle_bin" -O3 --careful --lossy="$LOSSY" "$base_gif" -o "$MANGO_OUTPUT"; then
+      if ! "$gifsicle_bin" -O3 --careful --lossy "$LOSSY" "$base_gif" -o "$MANGO_OUTPUT"; then
+        echo "→ gifsicle optimization failed; using ffmpeg GIF" >&2
+        cp "$base_gif" "$MANGO_OUTPUT"
+      fi
+    fi
   else
-    "$gifsicle_bin" -O3 --careful --lossy="$LOSSY" "$base_gif" -o "$MANGO_OUTPUT"
+    echo "→ gifsicle not available; saving ffmpeg GIF without extra optimization" >&2
+    cp "$base_gif" "$MANGO_OUTPUT"
   fi
 
   rm -rf "$tmpdir"

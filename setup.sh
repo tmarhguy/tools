@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mango setup — local venv, Python deps, optional ffmpeg, PATH symlink
+# Mango setup — local venv, Python deps, optional ffmpeg, global commands
 #
 # From a clone:
 #   ./setup.sh
@@ -13,8 +13,9 @@
 #   --doctor           Run mango doctor at the end (skipped when --fast and healthy)
 #   --update           git pull before setup (remote installs only)
 #   --no-ffmpeg        Skip ffmpeg install attempt
-#   --no-link          Skip ~/.local/bin symlink
-#   --link             Always symlink mango to ~/.local/bin
+#   --no-link          Skip ~/.local/bin command wrappers
+#   --link             Always install commands to ~/.local/bin
+#   --no-path          Skip adding ~/.local/bin to shell config
 
 set -euo pipefail
 
@@ -30,6 +31,7 @@ DO_GIT_UPDATE=0
 SKIP_FFMPEG=0
 SKIP_LINK=0
 FORCE_LINK=0
+SKIP_PATH=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -40,6 +42,7 @@ while [[ $# -gt 0 ]]; do
     --no-ffmpeg) SKIP_FFMPEG=1; shift ;;
     --no-link) SKIP_LINK=1; shift ;;
     --link) FORCE_LINK=1; shift ;;
+    --no-path) SKIP_PATH=1; shift ;;
     -h|--help)
       sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -220,29 +223,115 @@ _mango_try_ffmpeg() {
   esac
 }
 
+_mango_write_wrapper() {
+  local dest="$1" target="$2"
+  rm -f "$dest"
+  cat >"$dest" <<EOF
+#!/usr/bin/env bash
+exec "$target" "\$@"
+EOF
+  chmod +x "$dest"
+}
+
 _mango_link_bin() {
   local root="$1"
   [[ "$SKIP_LINK" -eq 1 && "$FORCE_LINK" -eq 0 ]] && return 0
 
-  local link_mango=0
+  local do_link=0
   if [[ "$FORCE_LINK" -eq 1 ]]; then
-    link_mango=1
-  elif _mango_confirm "Symlink mango → $MANGO_BIN_DIR/mango?"; then
-    link_mango=1
+    do_link=1
+  elif _mango_confirm "Install mango commands to $MANGO_BIN_DIR? (mango, format-json, merge-pdf, …)"; then
+    do_link=1
   fi
 
-  [[ "$link_mango" -eq 1 ]] || return 0
+  [[ "$do_link" -eq 1 ]] || return 0
 
   mkdir -p "$MANGO_BIN_DIR"
-  ln -sf "$root/mango" "$MANGO_BIN_DIR/mango"
-  _mango_info "Linked: $MANGO_BIN_DIR/mango"
+
+  _mango_write_wrapper "$MANGO_BIN_DIR/mango" "$root/bin/mango"
+
+  local tool count=0
+  for tool in "$root/bin/"*; do
+    [[ -f "$tool" ]] || continue
+    local name
+    name="$(basename "$tool")"
+    [[ "$name" == "mango" ]] && continue
+    _mango_write_wrapper "$MANGO_BIN_DIR/$name" "$tool"
+    count=$((count + 1))
+  done
+
+  _mango_info "Installed: mango + $count tools → $MANGO_BIN_DIR"
+}
+
+_mango_shell_rc_files() {
+  local -a rcs=()
+  case "${SHELL:-}" in
+    */zsh)  rcs+=("$HOME/.zshrc") ;;
+    */bash) rcs+=("$HOME/.bashrc") ;;
+  esac
+  [[ -f "$HOME/.zshrc" ]] && rcs+=("$HOME/.zshrc")
+  [[ -f "$HOME/.bashrc" ]] && rcs+=("$HOME/.bashrc")
+  [[ -f "$HOME/.profile" ]] && rcs+=("$HOME/.profile")
+
+  local rc seen="" deduped=()
+  for rc in "${rcs[@]}"; do
+  [[ -n "$rc" ]] || continue
+    case ":$seen:" in *":$rc:"*) continue ;; esac
+    seen="${seen:+$seen:}$rc"
+    deduped+=("$rc")
+  done
+  printf '%s\n' "${deduped[@]}"
+}
+
+_mango_path_configured() {
+  local rc line
+  while IFS= read -r rc; do
+    [[ -f "$rc" ]] || continue
+    while IFS= read -r line; do
+      [[ "$line" == *"mango tools PATH"* ]] && return 0
+    done <"$rc"
+  done < <(_mango_shell_rc_files)
+  return 1
+}
+
+_mango_configure_path() {
+  [[ "$SKIP_PATH" -eq 1 ]] && return 0
 
   case ":$PATH:" in
-    *":$MANGO_BIN_DIR:"*) ;;
-    *)
-      _mango_info "Add to PATH: export PATH=\"\$PATH:$MANGO_BIN_DIR\""
-      ;;
+    *":$MANGO_BIN_DIR:"*) return 0 ;;
   esac
+
+  _mango_path_configured && return 0
+
+  local do_path=0
+  if [[ "$FORCE_LINK" -eq 1 || "$ASSUME_YES" -eq 1 ]]; then
+    do_path=1
+  elif _mango_confirm "Add $MANGO_BIN_DIR to your shell PATH?"; then
+    do_path=1
+  fi
+
+  [[ "$do_path" -eq 1 ]] || return 0
+
+  local rc block
+  block="# mango tools PATH
+export PATH=\"\$PATH:$MANGO_BIN_DIR\""
+
+  local wrote=0
+  while IFS= read -r rc; do
+    [[ -f "$rc" ]] || continue
+    if grep -q 'mango tools PATH' "$rc" 2>/dev/null; then
+      continue
+    fi
+    printf '\n%s\n' "$block" >>"$rc"
+    _mango_info "Updated: $rc"
+    wrote=1
+  done < <(_mango_shell_rc_files)
+
+  if [[ "$wrote" -eq 0 ]]; then
+    _mango_info "Add to PATH: export PATH=\"\$PATH:$MANGO_BIN_DIR\""
+  else
+    _mango_info "Restart your terminal or run: source ~/.zshrc"
+  fi
 }
 
 main() {
@@ -265,13 +354,17 @@ main() {
     _mango_chmod_scripts "$root"
     if [[ "$FORCE_LINK" -eq 1 ]]; then
       _mango_link_bin "$root"
+      _mango_configure_path
     elif [[ -x "$MANGO_BIN_DIR/mango" ]]; then
-      _mango_info "PATH link: $MANGO_BIN_DIR/mango"
+      _mango_info "Commands: $MANGO_BIN_DIR/mango (+ tools)"
     fi
     echo ""
     echo "Already up to date."
     echo ""
     echo "  cd $root && ./mango"
+    if [[ -x "$MANGO_BIN_DIR/mango" ]]; then
+      echo "  mango                          # or run globally"
+    fi
     echo ""
     return 0
   fi
@@ -291,16 +384,22 @@ main() {
   fi
 
   _mango_link_bin "$root"
+  _mango_configure_path
 
   echo ""
   echo "Setup complete."
   echo ""
-  echo "  cd $root && ./mango          # interactive UI"
-  echo "  $root/bin/to_gif --help      # run a tool directly"
+  if [[ -x "$MANGO_BIN_DIR/mango" ]]; then
+    echo "  mango                          # interactive UI (anywhere)"
+    echo "  format-json --help             # run any tool directly"
+  else
+    echo "  cd $root && ./mango            # interactive UI"
+    echo "  $root/bin/to_gif --help        # run a tool directly"
+    echo "  ./setup.sh --link              # install commands globally"
+  fi
   echo ""
   if [[ "$root" == "$MANGO_INSTALL_DIR" ]]; then
     echo "  Installed to $MANGO_INSTALL_DIR (offline after setup)"
-    [[ -x "$MANGO_BIN_DIR/mango" ]] && echo "  Or run: mango"
   fi
   echo ""
 }

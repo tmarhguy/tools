@@ -33,28 +33,41 @@ A polished, user-friendly **command-line utility collection** designed to house 
 
 ## The Mango UI
 
-Run `./mango` anywhere to open the interactive hub — pick a category, drop a file, and let Mango guide the conversion.
+Run `mango` anywhere to open the interactive hub — pick a category, browse folders, and let Mango guide the conversion. After `./setup.sh --link --yes`, all tools are available globally (`format-json`, `merge-pdf`, `to_gif`, etc.).
 
 <p align="center">
-  <img src="media/full_ui_start_page.png" alt="Mango full start page — header, main menu, and choice prompt" width="800">
+  <img src="media/main_menu.png" alt="Mango main menu — arrow navigation" width="720">
 </p>
 
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <strong>Main menu</strong><br>
-      <sub>Pick a category</sub>
-      <br><br>
-      <img src="media/main_menu.png" alt="Mango main menu" width="420">
-    </td>
-    <td align="center" width="50%">
-      <strong>Enter choice</strong><br>
-      <sub>Type <code>1</code>–<code>6</code></sub>
-      <br><br>
-      <img src="media/enter_choice.png" alt="Mango choice prompt" width="420">
-    </td>
-  </tr>
-</table>
+The main menu uses arrow keys — no typing numbers. Pick a category and Mango walks you through the rest.
+
+<br>
+
+### Browse to your file
+
+When a tool needs input, Mango doesn't dump you into an empty folder or throw an error. It shows only the subfolders that actually contain matching files, plus any matches in the current directory. Open folders with Enter, go back with `../`, or press **P** to type a path.
+
+<p align="center">
+  <img src="media/dir_navig.png" alt="Mango folder browser" width="720">
+</p>
+
+<br>
+
+### Preview, run, done
+
+Before anything runs, you see exactly what goes in and what comes out. Confirm once, watch it execute, and get a clear result — saved path, file size, and how much space you saved.
+
+<p align="center">
+  <img src="media/img_comp_window.png" alt="Mango compress image — ready to convert" width="720">
+</p>
+
+<p align="center">
+  <img src="media/running_img_compress.png" alt="Mango running a conversion" width="720">
+</p>
+
+<p align="center">
+  <img src="media/success_image_compress.png" alt="Mango compress image — success" width="720">
+</p>
 
 More detail: [docs/mango-ui.md](docs/mango-ui.md)
 
@@ -65,7 +78,7 @@ More detail: [docs/mango-ui.md](docs/mango-ui.md)
 
 This project is currently expanding into a comprehensive suite of offline tools divided by category.
 
-**Setup:** See [docs/install.md](docs/install.md) and run `mango doctor` to verify dependencies.
+**Setup:** See [docs/install.md](docs/install.md). Run `./setup.sh --link --yes` to use `mango`, `format-json`, and other tools from anywhere. Run `mango doctor` to verify dependencies.
 
 ### Video & Audio (`tools/video/` & `tools/audio/`)
 - [x] **video-to-gif**: Two-pass ffmpeg palette conversion + gifsicle optimization for sharp, compact GIFs. (`bin/to_gif`) — `ffmpeg` required; `gifsicle` optional (auto-built on first run). Flags: `-w`, `--fps`, `-c` colors, `-l` lossy.
@@ -130,7 +143,7 @@ Full instructions: **[docs/install.md](docs/install.md)**
 **One-liner** (installs to `~/.local/share/mango`, then runs offline):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tmarhguy/tools/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tmarhguy/tools/main/setup.sh | bash -s -- --yes --link
 ```
 
 **Or clone + setup:**

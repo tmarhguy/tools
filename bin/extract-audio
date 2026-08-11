@@ -40,13 +40,15 @@ main() {
   echo "Extracting → $(basename "$MANGO_OUTPUT")"
 
   if [[ "$fmt" == "mp3" ]]; then
-    "$ffmpeg_bin" -hide_banner -loglevel warning -y \
+    "$ffmpeg_bin" -hide_banner -loglevel error -y \
       -i "$MANGO_INPUT" \
+      -map 0:a:0 \
       -vn -acodec libmp3lame -q:a 2 \
       "$MANGO_OUTPUT"
   else
-    "$ffmpeg_bin" -hide_banner -loglevel warning -y \
+    "$ffmpeg_bin" -hide_banner -loglevel error -y \
       -i "$MANGO_INPUT" \
+      -map 0:a:0 \
       -vn -acodec pcm_s16le \
       "$MANGO_OUTPUT"
   fi
