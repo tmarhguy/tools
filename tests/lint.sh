@@ -16,17 +16,36 @@ echo "────"
 
 # ── Shellcheck ──────────────────────────────────────────────────────────────────
 
-if command -v shellcheck &>/dev/null; then
-  mapfile -t SH_FILES < <(
-    find "$ROOT/bin" "$ROOT/lib" "$ROOT/tools" -type f \( -name '*.sh' -o ! -name '*.*' \) -perm +111 2>/dev/null \
-      | while read -r f; do head -1 "$f" 2>/dev/null | grep -q 'bash' && echo "$f"; done
-    printf '%s\n' "$ROOT/setup.sh" "$ROOT/mango" "$ROOT/tests/smoke.sh" "$ROOT/tests/run.sh" "$ROOT/tests/lint.sh" "$ROOT/tests/test_browse.sh"
-  )
-  # dedupe
-  mapfile -t SH_FILES < <(printf '%s\n' "${SH_FILES[@]}" | LC_ALL=C sort -u)
+_mango_collect_shell_files() {
+  local f
+  {
+    find "$ROOT/bin" "$ROOT/lib" "$ROOT/tools" -type f -name '*.sh' 2>/dev/null || true
+    for f in "$ROOT"/bin/*; do
+      [[ -f "$f" ]] || continue
+      head -1 "$f" 2>/dev/null | grep -qE '^#!.*bash' && printf '%s\n' "$f"
+    done
+    printf '%s\n' \
+      "$ROOT/setup.sh" \
+      "$ROOT/mango" \
+      "$ROOT/tests/smoke.sh" \
+      "$ROOT/tests/run.sh" \
+      "$ROOT/tests/lint.sh" \
+      "$ROOT/tests/test_browse.sh"
+  } | awk 'NF { print }' | LC_ALL=C sort -u
+}
 
-  if shellcheck -x -S warning "${SH_FILES[@]}"; then
-    pass "shellcheck (${#SH_FILES[@]} scripts)"
+if command -v shellcheck &>/dev/null; then
+  mapfile -t SH_FILES < <(_mango_collect_shell_files)
+
+  valid_files=()
+  for f in "${SH_FILES[@]}"; do
+    [[ -n "$f" && -f "$f" ]] && valid_files+=("$f")
+  done
+
+  if ((${#valid_files[@]} == 0)); then
+    fail "shellcheck (no scripts found)"
+  elif shellcheck -S warning "${valid_files[@]}"; then
+    pass "shellcheck (${#valid_files[@]} scripts)"
   else
     fail "shellcheck"
   fi
