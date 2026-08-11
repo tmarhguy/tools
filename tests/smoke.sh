@@ -200,10 +200,10 @@ fi
 
 if command -v ffmpeg &>/dev/null; then
   TEST_VIDEO="$FIX/sample.mp4"
-  if [[ ! -f "$TEST_VIDEO" ]]; then
-    ffmpeg -hide_banner -loglevel error -y \
-      -f lavfi -i "color=c=blue:s=64x64:d=1" -pix_fmt yuv420p "$TEST_VIDEO" 2>/dev/null || true
-  fi
+  ffmpeg -hide_banner -loglevel error -y \
+    -f lavfi -i "color=c=blue:s=64x64:d=1" \
+    -f lavfi -i "sine=frequency=1000:duration=1" \
+    -pix_fmt yuv420p -shortest "$TEST_VIDEO" 2>/dev/null || true
 
   if [[ -f "$TEST_VIDEO" ]]; then
     if "$ROOT/bin/to_gif" "$TEST_VIDEO" -o "$FIX/sample.gif" 2>/dev/null && [[ -f "$FIX/sample.gif" ]]; then
