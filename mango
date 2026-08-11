@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
 # Mango launcher — delegates to bin/mango
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+
+set -euo pipefail
+
+_src="${BASH_SOURCE[0]:-$0}"
+while [[ -L "$_src" ]]; do
+  _dir="$(cd "$(dirname "$_src")" && pwd)"
+  _src="$(readlink "$_src")"
+  [[ "$_src" != /* ]] && _src="$_dir/$_src"
+done
+ROOT="$(cd "$(dirname "$_src")" && pwd)"
 exec "$ROOT/bin/mango" "$@"
