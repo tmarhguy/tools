@@ -20,7 +20,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 
 | Layer | Script | What it checks |
 |-------|--------|----------------|
-| **Lint** | `tests/lint.sh` | [ShellCheck](https://www.shellcheck.net/) on bash scripts, [Ruff](https://docs.astral.sh/ruff/) on Python |
+| **Lint** | `tests/lint.sh` | [ShellCheck](https://www.shellcheck.net/) on bash scripts (`-S error`), [Ruff](https://docs.astral.sh/ruff/) on Python |
 | **Unit** | `tests/unit/` (pytest) | Dev, image, and PDF tools with real file I/O in temp dirs |
 | **Browse** | `tests/test_browse.sh` | Folder browser logic in `lib/mango-ui.sh` |
 | **Smoke** | `tests/smoke.sh` | Every registered `bin/` tool end-to-end |

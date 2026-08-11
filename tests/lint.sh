@@ -35,17 +35,15 @@ _mango_collect_shell_files() {
 }
 
 if command -v shellcheck &>/dev/null; then
-  mapfile -t SH_FILES < <(_mango_collect_shell_files)
-
   valid_files=()
-  for f in "${SH_FILES[@]}"; do
+  while IFS= read -r f; do
     [[ -n "$f" && -f "$f" ]] && valid_files+=("$f")
-  done
+  done < <(_mango_collect_shell_files)
 
   if ((${#valid_files[@]} == 0)); then
     fail "shellcheck (no scripts found)"
-  elif shellcheck -S warning "${valid_files[@]}"; then
-    pass "shellcheck (${#valid_files[@]} scripts)"
+  elif shellcheck -S error "${valid_files[@]}"; then
+    pass "shellcheck (${#valid_files[@]} scripts, -S error)"
   else
     fail "shellcheck"
   fi

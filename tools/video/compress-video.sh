@@ -29,7 +29,7 @@ esac
 if [[ -n "$MANGO_OUTPUT" ]]; then
   OUTPUT="$(mango_abs_path "$MANGO_OUTPUT")"
 else
-  OUTPUT="$(mango_abs_path "$(mango_default_output "$MANGO_INPUT" mp4")")"
+  OUTPUT="$(mango_abs_path "$(mango_default_output "$MANGO_INPUT" mp4)")"
   OUTPUT="${OUTPUT%.*}_compressed.mp4"
 fi
 
