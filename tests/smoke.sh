@@ -238,7 +238,14 @@ if [[ -n "$FFMPEG" ]]; then
       fail "trim-media"
     fi
 
-    if "$ROOT/bin/compress-video" "$TEST_VIDEO" -o "$FIX/video_compressed.mp4" -q 32 \
+    if plan=$("$ROOT/bin/compress-video" "$TEST_VIDEO" --plan 2>/dev/null) \
+      && [[ "$plan" == *"PRESET|50|"* ]]; then
+      pass "compress-video --plan"
+    else
+      fail "compress-video --plan"
+    fi
+
+    if "$ROOT/bin/compress-video" "$TEST_VIDEO" -o "$FIX/video_compressed.mp4" --ratio 50 \
       && [[ -s "$FIX/video_compressed.mp4" ]]; then
       pass "compress-video"
     else
