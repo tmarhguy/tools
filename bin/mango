@@ -20,6 +20,7 @@ MANGO_TOOLS=(
   "video-to-gif|Video → GIF|Video & Audio|to_gif|mp4,mov,webm,mkv,avi|gif|ready"
   "extract-audio|Extract Audio|Video & Audio|extract-audio|mp4,mov,mkv,webm|mp3|ready"
   "trim-media|Trim Media|Video & Audio|trim-media|mp4,mov,mkv,webm|mp4|ready"
+  "compress-video|Compress Video|Video & Audio|compress-video|mp4,mov,webm,mkv,avi|mp4|ready"
   "compress-image|Compress Image|Image|compress-image|jpg,jpeg,png,webp,gif|same|ready"
   "convert-image|Convert Image|Image|convert-image|jpg,jpeg,png,webp,gif,bmp|same|ready"
   "strip-exif|Strip EXIF|Image|strip-exif|jpg,jpeg,png,webp|same|ready"
@@ -94,9 +95,96 @@ _mango_exit_app() {
   _mango_tui_leave
   ui_clear
   echo ""
-  echo -e "  ${MANGO_FG_MANGO}${MANGO_BOLD}Thanks for using Mango!${MANGO_RESET} ${MANGO_DIM}🥭${MANGO_RESET}"
+  echo -e "  ${MANGO_FG_MANGO}${MANGO_BOLD}Thanks for using Mango!${MANGO_RESET}"
   echo ""
   exit 0
+}
+
+# ── Video compression ratio picker ─────────────────────────────────────────────
+
+_mango_vc_draw_page() {
+  ui_header
+  ui_title_bar "Compress Video"
+  ui_breadcrumb "Home" "Video & Audio" "Compress Video"
+  ui_box_open "Original"
+  ui_box_line "  ${MANGO_WHITE}${MANGO_BOLD}${_MANGO_VC_NAME}${MANGO_RESET}  ${MANGO_DIM}${_MANGO_VC_META}${MANGO_RESET}"
+  ui_box_close
+  echo ""
+}
+
+# Sets _MANGO_VC_RATIO (preset id) and _MANGO_VC_EST (human size). Returns 1 on cancel.
+_mango_pick_compress_ratio() {
+  local input="$1"
+  local plan kind id percent label bytes rec orig_bytes secs res
+  local -a ids=() labels=() estimates=()
+  local rec_index=0 i=0
+
+  _MANGO_VC_RATIO=""
+  _MANGO_VC_EST=""
+  _MANGO_VC_NAME="$(basename "$input")"
+  _MANGO_VC_META=$(_mango_file_size "$input")
+
+  plan=$("$BIN/compress-video" "$input" --plan 2>/dev/null) || plan=""
+  if [[ -z "$plan" ]]; then
+    ui_message warning "Could not probe the video for size estimates."
+    ui_prompt_default "Compression ratio (best, 80, 50, 25, 10)" "50" _MANGO_VC_RATIO
+    _MANGO_VC_EST=""
+    return 0
+  fi
+
+  while IFS='|' read -r kind id percent label bytes rec; do
+    case "$kind" in
+      ORIG)
+        orig_bytes="$id"
+        secs="$percent"
+        res="$label"
+        _MANGO_VC_META="$(_mango_fmt_bytes "$orig_bytes")"
+        if [[ -n "$secs" ]]; then
+          _MANGO_VC_META+="  ·  $(awk -v s="$secs" 'BEGIN {
+            s = int(s + 0.5)
+            h = int(s / 3600); m = int((s % 3600) / 60); sec = s % 60
+            if (h > 0) printf "%d:%02d:%02d", h, m, sec
+            else printf "%d:%02d", m, sec
+          }')"
+        fi
+        [[ -n "$res" && "$res" != "unknown" ]] && _MANGO_VC_META+="  ·  ${res}"
+        ;;
+      PRESET)
+        ids+=("$id")
+        estimates+=("$bytes")
+        if [[ "$rec" == "1" ]]; then
+          rec_index=$i
+          labels+=("${label}|~$(_mango_fmt_bytes "$bytes")  ·  recommended")
+        else
+          labels+=("${label}|~$(_mango_fmt_bytes "$bytes")")
+        fi
+        ((i++)) || true
+        ;;
+    esac
+  done <<< "$plan"
+
+  if [[ ${#ids[@]} -eq 0 ]]; then
+    _MANGO_VC_RATIO="50"
+    return 0
+  fi
+
+  labels+=("Back|")
+  _MANGO_PAGE_DRAW_FN=_mango_vc_draw_page
+  MANGO_MENU_FOOTER="${MANGO_DIM}Estimated size after compression${MANGO_RESET}"
+  MANGO_MENU_INITIAL="$rec_index"
+
+  local choice
+  ui_menu_select choice page main "Compression ratio" "${labels[@]}"
+  _MANGO_PAGE_DRAW_FN=""
+  MANGO_MENU_FOOTER=""
+
+  if [[ "$choice" -eq ${#labels[@]} ]]; then
+    return 1
+  fi
+
+  _MANGO_VC_RATIO="${ids[$((choice - 1))]}"
+  _MANGO_VC_EST="$(_mango_fmt_bytes "${estimates[$((choice - 1))]}")"
+  return 0
 }
 
 # ── Conversion runner ───────────────────────────────────────────────────────────
@@ -152,6 +240,8 @@ _mango_run_conversion() {
     suggested="$(dirname "$input")/$(basename "${input%.*}")-pages"
   elif [[ "$tool_id" == "pdf-to-jpg" ]]; then
     suggested="$(dirname "$input")/$(basename "${input%.*}")-jpg"
+  elif [[ "$tool_id" == "compress-video" ]]; then
+    suggested="$(dirname "$input")/$(basename "${input%.*}")_compressed.mp4"
   elif [[ "$out_ext" == "same" ]]; then
     output="$input"
     suggested=""
@@ -173,7 +263,27 @@ _mango_run_conversion() {
     ui_prompt_default "End time (blank = end of file)" "" trim_end
   fi
 
+  local compress_ratio=""
+  if [[ "$tool_id" == "compress-video" ]]; then
+    if ! _mango_pick_compress_ratio "$input"; then
+      ui_message info "Cancelled."
+      ui_pause
+      return 0
+    fi
+    compress_ratio="$_MANGO_VC_RATIO"
+  fi
+
   ui_conversion_preview "$input" "$output" "Ready to convert"
+  if [[ "$tool_id" == "compress-video" ]]; then
+    ui_box_open "Ratio"
+    if [[ -n "${_MANGO_VC_EST:-}" ]]; then
+      ui_box_line "  ${MANGO_WHITE}${compress_ratio}${MANGO_RESET}  ${MANGO_DIM}about ${_MANGO_VC_EST}${MANGO_RESET}"
+    else
+      ui_box_line "  ${MANGO_WHITE}${compress_ratio}${MANGO_RESET}"
+    fi
+    ui_box_close
+    echo ""
+  fi
 
   if ! ui_confirm "Start conversion?"; then
     ui_message info "Cancelled."
@@ -217,6 +327,9 @@ _mango_run_conversion() {
     trim-media)
       cmd+=("$input" "-s" "$trim_start" "-o" "$output")
       [[ -n "$trim_end" ]] && cmd+=("-e" "$trim_end")
+      ;;
+    compress-video)
+      cmd+=("$input" "-o" "$output" "--ratio" "$compress_ratio")
       ;;
     format-json|csv-to-json|base64-tool)
       cmd+=("$input" "-o" "$output")
@@ -386,7 +499,7 @@ _mango_main_menu() {
   local choice
   ui_menu_select choice home main "Main Menu" \
     "Quick Convert|pick a file → see all options" \
-    "Video & Audio|GIF, audio extraction, trim" \
+    "Video & Audio|GIF, compress, extract audio, trim" \
     "PDF Toolkit|convert, merge, compress" \
     "Image Toolkit|compress, convert formats" \
     "Developer|JSON, base64, hashes" \
