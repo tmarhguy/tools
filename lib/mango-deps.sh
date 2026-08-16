@@ -156,7 +156,7 @@ mango_check_python_pkg() {
 mango_tool_deps_ok() {
   local tool_id="$1"
   case "$tool_id" in
-    video-to-gif|extract-audio|trim-media)
+    video-to-gif|extract-audio|trim-media|compress-video)
       mango_ffmpeg &>/dev/null
       ;;
     compress-pdf)
@@ -181,7 +181,7 @@ mango_tool_deps_ok() {
 mango_tool_deps_hint() {
   local tool_id="$1"
   case "$tool_id" in
-    video-to-gif|extract-audio|trim-media)
+    video-to-gif|extract-audio|trim-media|compress-video)
       printf '%s\n' "$(mango_install_hint ffmpeg)"
       ;;
     compress-pdf)
@@ -198,7 +198,7 @@ mango_tool_deps_hint() {
 mango_tool_deps_install_guide() {
   local tool_id="$1"
   case "$tool_id" in
-    video-to-gif|extract-audio|trim-media)
+    video-to-gif|extract-audio|trim-media|compress-video)
       if command -v brew &>/dev/null; then
         mango_tool_deps_hint "$tool_id"
         return 0
