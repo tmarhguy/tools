@@ -243,6 +243,8 @@ _mango_menu_item_content() {
     desc="$rest"
     if [[ "$lower" == "exit" ]]; then
       printf '%s' "  ${marker} ${MANGO_RED}${MANGO_BOLD}${label}${MANGO_RESET}"
+    elif [[ "$lower" == "back" ]]; then
+      printf '%s' "  ${marker} ${MANGO_DIM}← ${label}${MANGO_RESET}"
     else
       printf '%s' "  ${marker} ${MANGO_WHITE}${label}${MANGO_RESET}  ${MANGO_DIM}${desc}${MANGO_RESET}"
     fi
@@ -354,11 +356,15 @@ ui_menu_select() {
   local title="$4"
   shift 4
   local -a items=("$@")
-  local selected=0 count=${#items[@]} key footer="${MANGO_MENU_FOOTER:-}"
+  local selected="${MANGO_MENU_INITIAL:-0}" count=${#items[@]} key footer="${MANGO_MENU_FOOTER:-}"
   local -a item_rows=()
   local old
+  MANGO_MENU_INITIAL=0
 
   [[ "$count" -gt 0 ]] || return 1
+  if [[ "$selected" -ge "$count" ]] || [[ "$selected" -lt 0 ]]; then
+    selected=0
+  fi
 
   _mango_tui_enter
 
@@ -514,6 +520,19 @@ ui_prompt_default() {
   fi
 }
 
+_mango_fmt_bytes() {
+  local bytes="$1"
+  if [[ "$bytes" -ge 1073741824 ]]; then
+    awk -v b="$bytes" 'BEGIN { printf "%.1f GB", b/1073741824 }'
+  elif [[ "$bytes" -ge 1048576 ]]; then
+    awk -v b="$bytes" 'BEGIN { printf "%.1f MB", b/1048576 }'
+  elif [[ "$bytes" -ge 1024 ]]; then
+    awk -v b="$bytes" 'BEGIN { printf "%.1f KB", b/1024 }'
+  else
+    echo "${bytes} B"
+  fi
+}
+
 _mango_file_size() {
   local path="$1"
   if [[ ! -f "$path" ]]; then
@@ -521,17 +540,9 @@ _mango_file_size() {
     return
   fi
   if stat -f%z "$path" &>/dev/null; then
-    local bytes
-    bytes=$(stat -f%z "$path")
-    if [[ "$bytes" -ge 1073741824 ]]; then
-      awk -v b="$bytes" 'BEGIN { printf "%.1f GB", b/1073741824 }'
-    elif [[ "$bytes" -ge 1048576 ]]; then
-      awk -v b="$bytes" 'BEGIN { printf "%.1f MB", b/1048576 }'
-    elif [[ "$bytes" -ge 1024 ]]; then
-      awk -v b="$bytes" 'BEGIN { printf "%.1f KB", b/1024 }'
-    else
-      echo "${bytes} B"
-    fi
+    _mango_fmt_bytes "$(stat -f%z "$path")"
+  elif stat -c%s "$path" &>/dev/null; then
+    _mango_fmt_bytes "$(stat -c%s "$path")"
   else
     ls -lh "$path" 2>/dev/null | awk '{print $5}'
   fi

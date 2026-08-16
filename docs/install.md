@@ -1,14 +1,11 @@
 # Mango — Installation & Setup
 
-![status](https://img.shields.io/badge/status-active_development-2ea043?style=for-the-badge)
 ![platform](https://img.shields.io/badge/platform-macOS_|_Linux_|_Windows-2563EB?style=for-the-badge)
 ![python](https://img.shields.io/badge/python-3.9+-3776AB?style=for-the-badge)
 
-Get Mango running locally in a few minutes.
+Install Mango, its Python environment, and optional system tools. After this, run `mango` from a terminal.
 
-<p align="center">
-  <img src="../media/title_screen_mango.png" alt="Mango — My Toolkit Hub" width="720">
-</p>
+Already installed? **[Interface Guide](mango-ui.md)**
 
 ---
 
@@ -21,30 +18,15 @@ Get Mango running locally in a few minutes.
 - [Verify your install](#verify-your-install)
 - [Add Mango to your PATH](#add-mango-to-your-path)
 - [Platform notes](#platform-notes)
-- [Optional dependencies](#optional-dependencies)
 - [What each tool needs](#what-each-tool-needs)
 - [Troubleshooting](#troubleshooting)
 - [Related](#related)
 
 ---
 
-## What you need
-
-| Requirement | Used for |
-|-------------|----------|
-| **Python 3.9+** | PDF, image, and developer tools |
-| **pip + venv** | Installing Python packages in an isolated environment |
-| **ffmpeg** | Video → GIF, extract audio, trim media |
-| **gifsicle** *(optional)* | Video → GIF optimization (auto-built into `.tools/` on first run if missing) |
-| **Ghostscript** *(optional)* | PDF compression only |
-
-Developer tools (JSON, CSV, base64, hashes) need **Python only** — no extra packages beyond the stdlib.
-
----
-
 ## Quick start
 
-**One-liner** (no manual clone — installs to `~/.local/share/mango`):
+**One-liner** (installs to `~/.local/share/mango`, then runs offline):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tmarhguy/tools/main/setup.sh | bash -s -- --yes --link
@@ -58,7 +40,7 @@ cd tools
 ./setup.sh
 ```
 
-The setup script creates the venv, installs Python packages, makes scripts executable, optionally installs `ffmpeg`, runs `mango doctor` on first install, and can install **all Mango commands** (`mango`, `format-json`, `merge-pdf`, etc.) to `~/.local/bin` with optional PATH setup. **Re-runs skip pip and doctor when nothing changed** — typically under half a second.
+`setup.sh` creates the venv, installs Python packages, makes scripts executable, can install `ffmpeg`, runs `mango doctor` on first install, and can put every command on your PATH. **Re-runs skip pip and doctor when nothing changed** — typically under half a second.
 
 Non-interactive: `./setup.sh --yes`
 
@@ -81,20 +63,34 @@ Non-interactive: `./setup.sh --yes`
 
 **Install location:** `~/.local/share/mango` (override with `MANGO_INSTALL_DIR`)
 
+---
+
+## What you need
+
+| Requirement | Used for |
+|-------------|----------|
+| **Python 3.9+** | PDF, image, and developer tools |
+| **pip + venv** | Isolated Python packages |
+| **ffmpeg** | Video → GIF, compress video, extract audio, trim |
+| **gifsicle** *(optional)* | GIF optimization (auto-built into `.tools/` on first run if missing) |
+| **Ghostscript** *(optional)* | `compress-pdf` only |
+
+Developer tools (JSON, CSV, base64, hashes) need **Python only**.
+
+---
+
 ## Step-by-step setup
 
-Manual install (alternative to `setup.sh`):
+Manual install if you are not using `setup.sh`:
 
-### 1. Clone the repository
+### 1. Clone
 
 ```bash
 git clone https://github.com/tmarhguy/tools.git
 cd tools
 ```
 
-### 2. Create a virtual environment
-
-Keeps Mango's Python packages separate from your system Python.
+### 2. Virtual environment
 
 ```bash
 python3 -m venv .venv
@@ -102,19 +98,19 @@ source .venv/bin/activate          # macOS / Linux
 # .venv\Scripts\activate           # Windows
 ```
 
-You should see `(.venv)` in your prompt. Re-run `source .venv/bin/activate` whenever you open a new terminal.
+Re-activate with `source .venv/bin/activate` in each new terminal.
 
-### 3. Install Python dependencies
+### 3. Python packages
 
 ```bash
 pip install -r requirements.txt
 ```
 
-This installs **Pillow**, **pypdf**, **pdf2docx**, and **pymupdf** — the backends for image and PDF tools.
+Installs **Pillow**, **pypdf**, **pdf2docx**, and **pymupdf**.
 
-### 4. Install system tools
+### 4. System tools
 
-**ffmpeg** (required for video & audio):
+**ffmpeg** (video & audio):
 
 ```bash
 brew install ffmpeg                # macOS
@@ -122,7 +118,7 @@ sudo apt install ffmpeg            # Ubuntu / Debian
 winget install Gyan.FFmpeg         # Windows
 ```
 
-**Ghostscript** (optional — only for `compress-pdf`):
+**Ghostscript** (optional — `compress-pdf` only):
 
 ```bash
 brew install ghostscript           # macOS
@@ -130,35 +126,14 @@ sudo apt install ghostscript       # Linux
 winget install Artifex.GhostScript # Windows
 ```
 
-### 5. Launch Mango
+### 5. Run
 
 ```bash
-./mango              # interactive UI
-./mango doctor       # dependency check only
+./mango              # interactive hub
+./mango doctor       # dependency check
 ```
 
-<p align="center">
-  <img src="../media/main_menu.png" alt="Mango main menu" width="800">
-</p>
-
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <strong>Folder browser</strong><br>
-      <sub>Matching folders and files only</sub>
-      <br><br>
-      <img src="../media/dir_navig.png" alt="Mango folder browser" width="380">
-    </td>
-    <td align="center" width="50%">
-      <strong>Conversion complete</strong><br>
-      <sub>Size saved and output path</sub>
-      <br><br>
-      <img src="../media/success_image_compress.png" alt="Mango success screen" width="380">
-    </td>
-  </tr>
-</table>
-
-Interface walkthrough: [mango-ui.md](mango-ui.md)
+How the hub works: **[mango-ui.md](mango-ui.md)**
 
 ---
 
@@ -168,36 +143,21 @@ Interface walkthrough: [mango-ui.md](mango-ui.md)
 ./mango doctor
 ```
 
-`mango doctor` checks Python, your venv, pip packages, and system commands. It prints **fix commands** for anything missing.
-
-Example output when healthy:
+Checks Python, the venv, pip packages, and system commands, and prints **fix commands** for anything missing.
 
 ```
   ✔ Python: Python 3.x.x (.venv/bin/python)
   ✔ Virtual env: .../tools/.venv
   ✔ Python package: Pillow
-  ...
   ✔ Command: ffmpeg
 ```
 
-### Verify all tools
-
-Run the full test suite (lint, unit tests, browse logic, and smoke tests):
+Full test suite (lint, unit, browse, smoke):
 
 ```bash
-./tests/run.sh
-```
-
-Faster check without end-to-end smoke:
-
-```bash
-./tests/run.sh --quick
-```
-
-Legacy smoke-only:
-
-```bash
-./tests/smoke.sh
+./tests/run.sh           # everything
+./tests/run.sh --quick   # skip smoke
+./tests/smoke.sh         # smoke only
 ```
 
 You should see `All requested tests passed.` Details: [tests/README.md](../tests/README.md)
@@ -206,39 +166,26 @@ You should see `All requested tests passed.` Details: [tests/README.md](../tests
 
 ## Add Mango to your PATH
 
-After setup, Mango tools can run from **any directory** — like `python3` or `git`.
-
-### Recommended: global install via setup
+So `mango` (and `format-json`, `merge-pdf`, …) work from any directory.
 
 ```bash
 ./setup.sh --link --yes
 ```
 
-This installs every tool to `~/.local/bin` and adds that directory to your shell config (`.zshrc`, `.bashrc`, etc.). Open a new terminal, then:
+That installs wrappers to `~/.local/bin` and adds it to your shell config. Open a new terminal:
 
 ```bash
 mango
 format-json data.json
-merge-pdf a.pdf b.pdf
 ```
 
-### Manual PATH (from a clone)
+**Manual PATH** (from a clone):
 
 ```bash
 export PATH="$PATH:/path/to/tools/bin"
 ```
 
-Add that line to your shell config to make it permanent.
-
-You can also run tools directly from the repo root:
-
-```bash
-./mango
-./bin/to_gif video.mp4 -o out.gif
-./bin/to_gif video.mp4 -o out.gif -w 720 -c 192 -l 38
-```
-
-### Skip global install
+**Skip global install:**
 
 ```bash
 ./setup.sh --no-link          # don't install to ~/.local/bin
@@ -264,18 +211,8 @@ sudo apt install python3 python3-venv python3-pip ffmpeg ghostscript
 ### Windows
 
 - Install Python from [python.org](https://www.python.org/downloads/) (check **Add to PATH**).
-- Use `winget` for ffmpeg and Ghostscript (see Quick start).
+- Use `winget` for ffmpeg and Ghostscript (see [What you need](#what-you-need)).
 - Activate the venv with `.venv\Scripts\activate` in PowerShell or CMD.
-
----
-
-## Optional dependencies
-
-| Tool | Optional dep | Install |
-|------|----------------|---------|
-| `compress-pdf` | Ghostscript (`gs`) | `brew install ghostscript` |
-
-All other shipped tools work without Ghostscript.
 
 ---
 
@@ -283,20 +220,15 @@ All other shipped tools work without Ghostscript.
 
 | Category | Tools | Dependencies |
 |----------|-------|----------------|
-| **Video & Audio** | GIF, extract audio, trim | `ffmpeg` (+ `gifsicle` for GIF optimization) |
+| **Video & Audio** | GIF, compress, extract audio, trim | `ffmpeg` (+ `gifsicle` for GIF optimization) |
 | **Image** | compress, convert, strip EXIF | Python + `Pillow` |
 | **PDF** | merge, split, rotate, jpg→pdf | Python + `pypdf` |
 | **PDF** | PDF → Word | Python + `pdf2docx` |
 | **PDF** | PDF → JPG | Python + `pymupdf` |
-| **PDF** | compress | Ghostscript (`gs`) |
+| **PDF** | compress | Ghostscript (`gs`) — optional; other PDF tools do not need it |
 | **Developer** | JSON, CSV, base64, hash | Python 3 stdlib only |
 
-Run any tool with `--help` for usage:
-
-```bash
-./bin/format-json --help
-./bin/merge-pdf --help
-```
+Flags for a given tool: `./bin/<tool> --help`
 
 ---
 
@@ -304,7 +236,7 @@ Run any tool with `--help` for usage:
 
 **Setup script fails on `curl | bash`**
 
-Ensure `git` and `python3` are installed. Re-run with:
+Ensure `git` and `python3` are installed, then:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tmarhguy/tools/main/setup.sh | bash -s -- --yes
@@ -314,14 +246,14 @@ curl -fsSL https://raw.githubusercontent.com/tmarhguy/tools/main/setup.sh | bash
 
 ```bash
 ./setup.sh --yes
-# or manually:
+# or:
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
 **`ffmpeg` not found**
 
-Install via your package manager (see [Platform notes](#platform-notes)), then re-run `./mango doctor`.
+Install via your package manager (see [Platform notes](#platform-notes)), then `./mango doctor`.
 
 **`Permission denied` when running `./mango`**
 
@@ -335,12 +267,12 @@ Works best on **text-based** PDFs. Scanned/image PDFs need OCR (not yet supporte
 
 **Mango says "interactive terminal UI" and exits**
 
-Run `./mango` directly in a terminal — it doesn't work when piped or run from a non-TTY environment.
+Run `./mango` directly in a terminal — not piped, and not from a non-TTY environment.
 
 ---
 
 ## Related
 
+- [mango-ui.md](mango-ui.md) — menus, file browser, conversion flow
 - [Readme.md](../Readme.md) — overview and full tool list
-- [mango-ui.md](mango-ui.md) — interface guide
 - [setup.sh](../setup.sh) — automated install script

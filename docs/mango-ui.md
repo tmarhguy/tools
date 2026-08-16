@@ -1,14 +1,11 @@
 # Mango — Interface Guide
 
-![status](https://img.shields.io/badge/status-active_development-2ea043?style=for-the-badge)
 ![interface](https://img.shields.io/badge/interface-terminal_TUI-2563EB?style=for-the-badge)
 ![offline](https://img.shields.io/badge/offline-first-3776AB?style=for-the-badge)
 
-Mango is the interactive front-end for this toolkit. One command, guided prompts — no memorizing script names or flags.
+How the interactive hub works: menus, the file browser, and a conversion from start to finish.
 
-<p align="center">
-  <img src="../media/title_screen_mango.png" alt="Mango — My Toolkit Hub" width="720">
-</p>
+Not set up yet? **[Installation & Setup](install.md)**
 
 ---
 
@@ -18,10 +15,8 @@ Mango is the interactive front-end for this toolkit. One command, guided prompts
 - [Main menu](#main-menu)
 - [Folder browser](#folder-browser)
 - [Conversion flow](#conversion-flow)
-- [How it works](#how-it-works)
 - [Quick Convert](#quick-convert)
-- [CLI alternative](#cli-alternative)
-- [Tips](#tips)
+- [Keys](#keys)
 - [Related](#related)
 
 ---
@@ -29,29 +24,26 @@ Mango is the interactive front-end for this toolkit. One command, guided prompts
 ## Launch
 
 ```bash
-./mango              # from the repo root
-mango                # from anywhere (after ./setup.sh --link --yes)
-./mango doctor       # dependency check only
+mango          # from anywhere, after setup --link
+./mango        # from the repo root
 ```
 
-Requires a real terminal (TTY). Mango won't run when piped or from non-interactive shells.
-
-Not installed yet? See [install.md](install.md) or run `./setup.sh --link --yes`.
+Needs a real terminal (TTY). It will not run when piped.
 
 ---
 
 ## Main menu
 
-Navigate with **↑↓** and press **Enter** to select. **●** tools are ready; **○** are coming soon.
+**↑↓** to move, **Enter** to select. **●** ready · **○** coming soon.
 
 <p align="center">
   <img src="../media/main_menu.png" alt="Mango main menu — arrow navigation" width="520">
 </p>
 
-| Option | Description |
-|--------|-------------|
-| **Quick Convert** | Pick a file first → see all conversions for that type |
-| **Video & Audio** | GIF, extract audio, trim |
+| Option | What it does |
+|--------|----------------|
+| **Quick Convert** | Pick a file first, then choose a conversion for that type |
+| **Video & Audio** | GIF, compress, extract audio, trim |
 | **PDF Toolkit** | Convert, merge, split, rotate, compress |
 | **Image Toolkit** | Compress, convert formats, strip EXIF |
 | **Developer** | JSON, CSV, base64, hashes |
@@ -61,24 +53,19 @@ Navigate with **↑↓** and press **Enter** to select. **●** tools are ready;
 
 ## Folder browser
 
-When you pick a tool, Mango shows only **folders that contain matching files** — plus any matches in the current directory. Open a folder with **Enter**, go up with **`../`**, or press **P** to type a path manually.
+Mango lists only folders that contain matching files, plus matches in the current directory. **Enter** opens a folder or selects a file. **`../`** goes up. **P** to paste or drag-and-drop a path.
 
 <p align="center">
   <img src="../media/dir_navig.png" alt="Mango folder browser — filtered folders and files" width="720">
 </p>
 
-| Key | Action |
-|-----|--------|
-| **↑↓** | Navigate the list |
-| **Enter** | Open a folder or select a file |
-| **P** | Type a path manually |
-| **Q** | Go back / cancel |
+Run `mango` from the folder you are working in so the browser starts there.
 
 ---
 
 ## Conversion flow
 
-After you pick a file, Mango previews the conversion, runs the tool, and reports the result.
+Preview the paths, confirm, watch it run, then get the saved path and size.
 
 <table>
   <tr>
@@ -105,56 +92,26 @@ After you pick a file, Mango previews the conversion, runs the tool, and reports
 
 ---
 
-## How it works
-
-1. **Launch** — `mango` from any directory
-2. **Choose** — a category from the main menu, or **Quick Convert**
-3. **Browse** — arrow through folders; only relevant files and folders are shown
-4. **Preview** — confirm input → output paths
-5. **Run** — Mango executes the underlying `bin/` tool
-6. **Return** — press Enter to go back to the menu
-
----
-
 ## Quick Convert
 
-The fastest path: select your file first, then Mango lists every conversion available for that extension.
+Pick the file first. Mango lists every conversion registered for that extension.
 
-Example: pick `report.pdf` → see PDF → Word, split, rotate, JPG export, etc.
-
----
-
-## CLI alternative
-
-Every tool is also available directly — useful for scripts and automation:
-
-```bash
-./bin/to_gif video.mp4 -o out.gif
-./bin/to_gif video.mp4 -o out.gif -w 720 --fps 15 -c 192 -l 38
-./bin/merge-pdf a.pdf b.pdf -o merged.pdf
-./bin/format-json data.json -o pretty.json
-./bin/compress-image photo.jpg -o photo-small.jpg
-```
-
-Run any tool with `--help` for flags.
+Example: `report.pdf` → PDF → Word, split, rotate, JPG export, compress.
 
 ---
 
-## Tips
+## Keys
 
-| Tip | Detail |
-|-----|--------|
-| **Browse anywhere** | Run `mango` from the folder you're working in — no need to move files |
-| **Folder filter** | Subfolders only appear if they contain files for the current tool |
-| **Type a path** | Press **P** in the file browser to paste or drag & drop a path |
-| **Go back** | **Q** at a menu or file picker returns to the previous screen |
-| **Check deps** | `mango doctor` before your first conversion |
-| **Global install** | `./setup.sh --link --yes` puts all commands on your PATH |
+| Key | Where | Action |
+|-----|--------|--------|
+| **↑↓** | Menus and browser | Move |
+| **Enter** | Menus and browser | Select / open |
+| **P** | File browser | Type or paste a path |
+| **Q** | Menus and browser | Back / cancel |
 
 ---
 
 ## Related
 
+- [install.md](install.md) — setup, PATH, and dependencies
 - [Readme.md](../Readme.md) — overview and full tool list
-- [install.md](install.md) — setup, `setup.sh`, and dependencies
-- [setup.sh](../setup.sh) — automated install script

@@ -84,7 +84,7 @@ This project is currently expanding into a comprehensive suite of offline tools 
 - [x] **video-to-gif**: Two-pass ffmpeg palette conversion + gifsicle optimization for sharp, compact GIFs. (`bin/to_gif`) — `ffmpeg` required; `gifsicle` optional (auto-built on first run). Flags: `-w`, `--fps`, `-c` colors, `-l` lossy.
 - [x] **extract-audio**: Pull MP3/WAV tracks from video files. (`bin/extract-audio`)
 - [x] **trim-media**: Trim media duration with ffmpeg. (`bin/trim-media`)
-- [x] **compress-video**: Optimize video files for web sharing. (`bin/compress-video`)
+- [x] **compress-video**: Shrink videos to Best / 80% / 50% / 25% / 10% of original size, with a recommendation and estimated output size for each. (`bin/compress-video`) — `ffmpeg` required. Flags: `--ratio`, `--list`.
 
 ### PDF Toolkit (`tools/pdf/`)
 A complete offline alternative to tools like iLovePDF.

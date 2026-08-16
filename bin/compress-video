@@ -1,15 +1,379 @@
 #!/usr/bin/env bash
-# Wrapper — Compress Video
+# compress-video — shrink a video to a target size ratio via ffmpeg
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TOOL="$ROOT/tools/video/compress-video.sh"
+MANGO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/mango-cli.sh
+source "$MANGO_ROOT/lib/mango-cli.sh"
 
-if [[ ! -x "$TOOL" ]]; then
-  echo "Error: Compress Video tool is not installed yet." >&2
-  echo "Expected script: $TOOL" >&2
-  exit 1
-fi
+LIST=0
+PLAN=0
+RATIO=""
+CRF=""
+SPEED="medium"
 
-exec "$TOOL" "$@"
+# id|percent|label|blurb
+VC_PRESETS=(
+  "best|90|Best|Highest quality, least visible loss"
+  "80|80|80%|High quality"
+  "50|50|50%|Balanced — good for sharing"
+  "25|25|25%|Compact"
+  "10|10|10%|Tiny — noticeable quality drop"
+)
+
+usage() {
+  mango_usage "compress-video INPUT [-o OUTPUT] [--ratio N|best] [--list]" \
+    "Compress a video to a target size ratio (needs ffmpeg)." \
+    "" \
+    "Options:" \
+    "  -o, --output   Output MP4 (default: input_compressed.mp4)" \
+    "      --ratio    Target size vs original: best, 80, 50, 25, 10" \
+    "                 (or any 5–95). Alias: -q / --quality" \
+    "      --list     Show presets, estimated sizes, and the recommendation" \
+    "      --plan     Machine-readable preset table (used by mango)" \
+    "      --crf      Advanced: x264 CRF 18–32 instead of a size ratio" \
+    "      --speed    x264 preset: ultrafast|fast|medium|slow (default: medium)" \
+    "  -h, --help     Show this help"
+}
+
+vc_bytes() {
+  local path="$1"
+  stat -f%z "$path" 2>/dev/null || stat -c%s "$path"
+}
+
+vc_fmt_bytes() {
+  awk -v b="$1" 'BEGIN {
+    if (b >= 1073741824) printf "%.1f GB", b / 1073741824
+    else if (b >= 1048576) printf "%.1f MB", b / 1048576
+    else if (b >= 1024) printf "%.1f KB", b / 1024
+    else printf "%d B", b
+  }'
+}
+
+vc_fmt_duration() {
+  awk -v s="$1" 'BEGIN {
+    if (s < 0) s = 0
+    s = int(s + 0.5)
+    h = int(s / 3600)
+    m = int((s % 3600) / 60)
+    sec = s % 60
+    if (h > 0) printf "%d:%02d:%02d", h, m, sec
+    else printf "%d:%02d", m, sec
+  }'
+}
+
+vc_probe() {
+  local ffmpeg_bin="$1" input="$2"
+  local banner ffprobe_bin
+
+  banner=$("$ffmpeg_bin" -nostdin -hide_banner -i "$input" 2>&1) || true
+
+  VC_SECS=""
+  ffprobe_bin="$(command -v ffprobe 2>/dev/null || true)"
+  if [[ -n "$ffprobe_bin" ]]; then
+    VC_SECS=$("$ffprobe_bin" -v error -show_entries format=duration -of default=nw=1:nk=1 "$input" 2>/dev/null || true)
+  fi
+  if [[ -z "$VC_SECS" || "$VC_SECS" == "N/A" ]]; then
+    VC_SECS=$(printf '%s\n' "$banner" | awk '
+      /Duration:/ {
+        if (match($0, /[0-9][0-9]:[0-9][0-9]:[0-9][0-9.]+/)) {
+          t = substr($0, RSTART, RLENGTH)
+          split(t, a, ":")
+          printf "%.3f", a[1] * 3600 + a[2] * 60 + a[3]
+          exit
+        }
+      }')
+    [[ -n "$VC_SECS" ]] || mango_die "Could not read duration from $(basename "$input")"
+  fi
+  awk -v s="$VC_SECS" 'BEGIN { exit (s + 0 > 0.05) ? 0 : 1 }' \
+    || mango_die "Video duration is too short to compress."
+
+  VC_WH=$(printf '%s\n' "$banner" | awk '
+    /Video:/ {
+      if (match($0, /[0-9][0-9]+x[0-9][0-9]+/)) {
+        print substr($0, RSTART, RLENGTH)
+        exit
+      }
+    }')
+  VC_WIDTH="${VC_WH%%x*}"
+  VC_HEIGHT="${VC_WH##*x}"
+  VC_HAS_AUDIO=0
+  if printf '%s\n' "$banner" | grep -q 'Audio:'; then
+    VC_HAS_AUDIO=1
+  fi
+}
+
+vc_recommend_id() {
+  local bytes="$1"
+  local mb
+  mb=$(awk -v b="$bytes" 'BEGIN { printf "%.0f", b / 1048576 }')
+  if (( mb >= 150 )); then
+    printf '%s' "25"
+  elif (( mb >= 40 )); then
+    printf '%s' "50"
+  elif (( mb >= 8 )); then
+    printf '%s' "80"
+  else
+    printf '%s' "best"
+  fi
+}
+
+vc_ratio_num() {
+  local spec="$1"
+  spec=$(printf '%s' "$spec" | tr '[:upper:]' '[:lower:]' | tr -d '%')
+  if [[ "$spec" == "best" ]]; then
+    printf '%s' "90"
+    return 0
+  fi
+  [[ "$spec" =~ ^[0-9]+$ ]] || return 1
+  if (( 10#$spec < 5 || 10#$spec > 95 )); then
+    return 1
+  fi
+  printf '%s' "$spec"
+}
+
+vc_audio_kbps() {
+  local ratio="$1"
+  if (( ratio <= 10 )); then
+    printf '%s' "48"
+  elif (( ratio <= 25 )); then
+    printf '%s' "64"
+  elif (( ratio <= 50 )); then
+    printf '%s' "96"
+  elif (( ratio <= 80 )); then
+    printf '%s' "128"
+  else
+    printf '%s' "160"
+  fi
+}
+
+vc_scale_filter() {
+  local height="$1" ratio="$2"
+  [[ "$height" =~ ^[0-9]+$ ]] || return 0
+  if (( ratio <= 10 && height > 480 )); then
+    printf '%s' "scale=-2:480"
+  elif (( ratio <= 25 && height > 720 )); then
+    printf '%s' "scale=-2:720"
+  fi
+}
+
+vc_target_bytes() {
+  local orig="$1" ratio="$2"
+  awk -v s="$orig" -v r="$ratio" 'BEGIN { printf "%.0f", s * r / 100 }'
+}
+
+vc_print_plan() {
+  local orig="$1" rec="$2"
+  local row id percent label blurb target is_rec
+  printf 'ORIG|%s|%s|%s\n' "$orig" "$VC_SECS" "${VC_WH:-unknown}"
+  for row in "${VC_PRESETS[@]}"; do
+    IFS='|' read -r id percent label blurb <<< "$row"
+    target=$(vc_target_bytes "$orig" "$percent")
+    is_rec=0
+    [[ "$id" == "$rec" ]] && is_rec=1
+    printf 'PRESET|%s|%s|%s|%s|%s\n' "$id" "$percent" "$label" "$target" "$is_rec"
+  done
+}
+
+vc_print_list() {
+  local input="$1" orig="$2" rec="$3"
+  local row id percent label blurb target mark
+  echo "Original: $(basename "$input")  $(vc_fmt_bytes "$orig")  ·  $(vc_fmt_duration "$VC_SECS")${VC_WH:+  ·  $VC_WH}"
+  echo ""
+  printf '  %-6s  %-12s  %10s  %s\n' "ID" "PRESET" "EST. SIZE" ""
+  for row in "${VC_PRESETS[@]}"; do
+    IFS='|' read -r id percent label blurb <<< "$row"
+    target=$(vc_target_bytes "$orig" "$percent")
+    mark=""
+    [[ "$id" == "$rec" ]] && mark="recommended"
+    printf '  %-6s  %-12s  %10s  %s\n' "$id" "$label" "$(vc_fmt_bytes "$target")" "$mark"
+  done
+  echo ""
+  echo "Sizes are targets. Recommended for this file: ${rec}"
+}
+
+vc_pick_interactive() {
+  local rec="$1"
+  local row id percent label i=1 choice
+  echo "Select a compression ratio:"
+  for row in "${VC_PRESETS[@]}"; do
+    IFS='|' read -r id percent label _ <<< "$row"
+    if [[ "$id" == "$rec" ]]; then
+      echo "  $i) $label  (${percent}% of original)  recommended"
+    else
+      echo "  $i) $label  (${percent}% of original)"
+    fi
+    ((i++)) || true
+  done
+  echo -n "Choice [${rec}]: "
+  read -r choice
+  if [[ -z "$choice" ]]; then
+    printf '%s' "$rec"
+    return 0
+  fi
+  choice=$(printf '%s' "$choice" | tr '[:upper:]' '[:lower:]' | tr -d '%')
+  if [[ "$choice" =~ ^[1-5]$ ]]; then
+    IFS='|' read -r id _ _ _ <<< "${VC_PRESETS[$((choice - 1))]}"
+    printf '%s' "$id"
+    return 0
+  fi
+  printf '%s' "$choice"
+}
+
+vc_encode_ratio() {
+  local ffmpeg_bin="$1" input="$2" output="$3" orig="$4" ratio="$5"
+  local target audio_k total_bps video_k vf
+  local -a args
+
+  target=$(vc_target_bytes "$orig" "$ratio")
+  audio_k=0
+  if [[ "$VC_HAS_AUDIO" -eq 1 ]]; then
+    audio_k=$(vc_audio_kbps "$ratio")
+  fi
+  total_bps=$(awk -v t="$target" -v d="$VC_SECS" 'BEGIN {
+    if (d < 0.1) d = 0.1
+    printf "%.0f", (t * 8) / d
+  }')
+  video_k=$(awk -v total="$total_bps" -v a="$audio_k" -v has="$VC_HAS_AUDIO" 'BEGIN {
+    total_k = total / 1000
+    if (total_k < 48) total_k = 48
+    if (has + 0 == 1) {
+      if (a > total_k * 0.30) a = total_k * 0.30
+      if (a < 24) a = 24
+      if (a > total_k - 32) a = total_k - 32
+      if (a < 0) a = 0
+    } else {
+      a = 0
+    }
+    v = total_k - a
+    if (v < 32) v = 32
+    printf "%.0f %.0f", v, a
+  }')
+  audio_k="${video_k##* }"
+  video_k="${video_k%% *}"
+  vf=$(vc_scale_filter "${VC_HEIGHT:-0}" "$ratio")
+
+  echo "Compressing $(basename "$input") → $(basename "$output")"
+  if [[ "$VC_HAS_AUDIO" -eq 1 && "$audio_k" -gt 0 ]]; then
+    echo "  target $(vc_fmt_bytes "$target")  (${ratio}% of original)  ·  video ${video_k} kbps  ·  audio ${audio_k} kbps"
+  else
+    echo "  target $(vc_fmt_bytes "$target")  (${ratio}% of original)  ·  video ${video_k} kbps"
+  fi
+
+  args=(-nostdin -hide_banner -loglevel error -stats -y -i "$input"
+        -c:v libx264 -preset "$SPEED" -b:v "${video_k}k" -maxrate "${video_k}k"
+        -bufsize "$((video_k * 2))k" -pix_fmt yuv420p)
+  if [[ -n "$vf" ]]; then
+    args+=(-vf "$vf")
+    echo "  scale ${vf#scale=}"
+  fi
+  if [[ "$VC_HAS_AUDIO" -eq 1 && "$audio_k" -gt 0 ]]; then
+    args+=(-c:a aac -b:a "${audio_k}k")
+  else
+    args+=(-an)
+  fi
+  args+=(-movflags +faststart "$output")
+  "$ffmpeg_bin" "${args[@]}"
+}
+
+vc_encode_crf() {
+  local ffmpeg_bin="$1" input="$2" output="$3" crf="$4"
+  echo "Compressing $(basename "$input") → $(basename "$output") (CRF ${crf}, ${SPEED})"
+  local -a args=(-nostdin -hide_banner -loglevel error -stats -y -i "$input"
+                 -c:v libx264 -crf "$crf" -preset "$SPEED" -pix_fmt yuv420p)
+  if [[ "$VC_HAS_AUDIO" -eq 1 ]]; then
+    args+=(-c:a aac -b:a 128k)
+  else
+    args+=(-an)
+  fi
+  args+=(-movflags +faststart "$output")
+  "$ffmpeg_bin" "${args[@]}"
+}
+
+main() {
+  local args=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --list) LIST=1; shift ;;
+      --plan) PLAN=1; shift ;;
+      --ratio) RATIO="$2"; shift 2 ;;
+      --crf) CRF="$2"; shift 2 ;;
+      --speed) SPEED="$2"; shift 2 ;;
+      -q|--quality) RATIO="$2"; shift 2 ;;
+      -h|--help) usage ;;
+      *) args+=("$1"); shift ;;
+    esac
+  done
+
+  if [[ ${#args[@]} -gt 0 ]]; then
+    mango_parse_args usage "${args[@]}" || return 0
+  else
+    mango_parse_args usage || return 0
+  fi
+  mango_require_input "$MANGO_INPUT"
+
+  case "$SPEED" in
+    ultrafast|fast|medium|slow) ;;
+    *) mango_die "Invalid --speed: $SPEED (use ultrafast, fast, medium, or slow)" ;;
+  esac
+
+  local ffmpeg_bin orig rec
+  ffmpeg_bin=$(require_ffmpeg) || exit 1
+  orig=$(vc_bytes "$MANGO_INPUT")
+  vc_probe "$ffmpeg_bin" "$MANGO_INPUT"
+  rec=$(vc_recommend_id "$orig")
+
+  if [[ "$PLAN" -eq 1 ]]; then
+    vc_print_plan "$orig" "$rec"
+    return 0
+  fi
+  if [[ "$LIST" -eq 1 ]]; then
+    vc_print_list "$MANGO_INPUT" "$orig" "$rec"
+    return 0
+  fi
+
+  if [[ -n "$MANGO_OUTPUT" ]]; then
+    MANGO_OUTPUT="$(mango_abs_path "$MANGO_OUTPUT")"
+  else
+    MANGO_OUTPUT="$(mango_abs_path "$(mango_default_output "$MANGO_INPUT" mp4)")"
+    MANGO_OUTPUT="${MANGO_OUTPUT%.*}_compressed.mp4"
+  fi
+
+  if [[ -n "$CRF" ]]; then
+    [[ "$CRF" =~ ^[0-9]+$ ]] && (( 10#$CRF >= 18 && 10#$CRF <= 32 )) \
+      || mango_die "CRF must be an integer 18–32."
+    vc_encode_crf "$ffmpeg_bin" "$MANGO_INPUT" "$MANGO_OUTPUT" "$CRF"
+  else
+    if [[ -z "$RATIO" ]]; then
+      if [[ -t 0 ]]; then
+        vc_print_list "$MANGO_INPUT" "$orig" "$rec"
+        echo ""
+        RATIO=$(vc_pick_interactive "$rec")
+      else
+        RATIO="$rec"
+        echo "No --ratio given; using recommended preset: ${RATIO}"
+      fi
+    fi
+    local ratio_num
+    ratio_num=$(vc_ratio_num "$RATIO") \
+      || mango_die "Invalid --ratio: $RATIO (use best, 80, 50, 25, 10, or 5–95)"
+    vc_encode_ratio "$ffmpeg_bin" "$MANGO_INPUT" "$MANGO_OUTPUT" "$orig" "$ratio_num"
+  fi
+
+  local after saved
+  after=$(vc_bytes "$MANGO_OUTPUT")
+  saved=$(awk -v b="$orig" -v a="$after" 'BEGIN {
+    if (b <= 0) { print 0; exit }
+    printf "%.0f", (b - a) * 100 / b
+  }')
+  if awk -v a="$after" -v b="$orig" 'BEGIN { exit (a < b) ? 0 : 1 }'; then
+    echo "✓ $MANGO_OUTPUT  ($(vc_fmt_bytes "$orig") → $(vc_fmt_bytes "$after"), ${saved}% smaller)"
+  elif [[ "$after" -eq "$orig" ]]; then
+    echo "✓ $MANGO_OUTPUT  ($(vc_fmt_bytes "$after"), same size as original)"
+  else
+    echo "✓ $MANGO_OUTPUT  ($(vc_fmt_bytes "$orig") → $(vc_fmt_bytes "$after"); already compact, re-encode did not shrink it)"
+  fi
+}
+
+main "$@"
